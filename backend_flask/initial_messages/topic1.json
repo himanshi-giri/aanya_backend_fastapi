@@ -1,0 +1,11 @@
+{
+    "content": [
+        {
+            "type": "text",
+            "text": "Hello ! I am Aanya, your AI tutor . I will help you learn about Supervised Learning today"
+        }
+    ],
+    "show_inputs": false,
+    "require_grade": false,
+    "require_topic": false
+}

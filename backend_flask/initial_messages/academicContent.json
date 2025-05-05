@@ -1,0 +1,6 @@
+{
+    "content": [{"type":"text","text":"I will generate original academic content. What subject are we focusing on?"}],
+        "show_inputs": true,
+        "require_grade": true,
+        "require_topic": true
+}

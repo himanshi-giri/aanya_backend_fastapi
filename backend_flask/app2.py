@@ -1,0 +1,68 @@
+from database.db import init_db
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+import os
+import uvicorn
+
+
+# Load environment variables
+load_dotenv()
+init_db()
+
+
+from database.db import users_collection , models
+
+from routes import user_routes, auth_routes, file_routes, api_routes, teach_routes
+
+
+is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+# Initialize FastAPI app
+app = FastAPI()
+ 
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Serve the "uploads" directory as static files
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+app.include_router(user_routes.router)
+app.include_router(auth_routes.router)
+app.include_router(file_routes.router)
+app.include_router(api_routes.router)
+app.include_router(teach_routes.router) # Himanshi
+
+origins = [
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5173/",
+    "http://localhost:3000",    #Himanshi
+    "http://localhost:5173/",
+    "https://tutor.eduai.live",
+   #"*"
+    # Add other origins if needed
+]
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Home Route
+@app.get("/")
+async def home():
+    return {"message": "FastAPI is running!"}
+
+
+
+# Start FastAPI Server (Run with: `uvicorn filename:app --reload`)
+if __name__ == "__main__":
+    uvicorn.run("app2:app", port=5000, reload=True)

@@ -1,0 +1,4 @@
+{"content": [{"type":"text","text":"I will generate an assessment. What topic and grade level should it cover?"}],
+        "show_inputs": true,
+        "require_grade": true,
+        "require_topic": true}

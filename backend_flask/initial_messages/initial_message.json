@@ -1,0 +1,6 @@
+{
+    "content": [{"type":"text","text":"Hi there welcome to {title}"}],
+    "show_inputs": false,
+    "require_grade": false,
+    "require_topic": false
+}

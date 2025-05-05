@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="fav-icon" content="/learn-icon.png">
+    <title>Aanya AI Tutor ({ROLE}) - {PAGE_TITLE}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="shortcut icon" href="/learn-icon.png">
+    <link rel="stylesheet" href="/assets/ekamai.css">
+
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.3/themes/base/jquery-ui.css">
+
+    <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.3/jquery-ui.js"></script>
+    <script>
+        $(function () {
+            //$("#speed").selectmenu();
+            //$("#grade_level").selectmenu();
+
+        }
+        );
+    </script>
+
+    <script>
+        $(function () {
+            $("input[type=radio]").checkboxradio();
+            $("#btn").button();
+
+            $("#btn").on("click", function (event) {
+                console.log("click")
+                $("#dialog-message").dialog("open");
+            });
+
+        });
+
+        $(function () {
+            $("#dialog-message").dialog({
+                modal: true,
+                autoOpen: false,
+                buttons: {
+                    Ok: function () {
+                        $(this).dialog("close");
+                    }
+                }
+            });
+
+            $("#objective_selections").dialog({
+                modal: true,
+                //autoOpen: false,
+                width: 500,
+                height: 500,
+                resizable: true,
+                buttons: {
+                   
+                    "Generate Worksheet": function () {
+                        $(this).dialog("close");
+                        clearHistory();
+                        process_input("file-upload");
+                        //process_message(true, "");
+                    },
+                    "Reset": function(){
+                        reset_selections();
+                    },
+                    Cancel: function () {
+                        $(this).dialog("close");
+                    }
+                },
+
+
+
+            });
+        });
+
+        function showDialog() {
+            console.log("click")
+            $("#dialog-message").dialog("open");
+        }
+
+
+    </script>
+    <script>
+ 
+    </script>
+</head>
+
+<body>
+
+    <div class="app-bar">
+        <!-- Your app bar content here -->
+        <a href="/"><img src="/assets/back-arrow.svg" height="25px" width="25px" /></a>
+        <span class="h1">Aanya AI - {ROLE}</span>
+        <span class="h2" style="width: 100%">{PAGE_TITLE}</span>
+        <img src="/assets/menu.svg" height="25px" width="25px" id="btn" onclick="showDialog();"
+            style="float: right;"></img>
+    </div>
+    <div class="header_objective" id="objective_selections" name="objective_selections" title="Select">
+
+        <div class="ui-widget selections" style="width: 400px; text-align: left;">
+
+
+            <select name="grade_level" id="grade_level" class="grade_selection">
+                <option>Grade 1</option>
+                <option>Grade 2</option>
+                <option>Grade 3</option>
+                <option>Grade 4</option>
+                <option>Grade 5</option>
+                <option>Grade 6</option>
+                <option>Grade 7</option>
+                <option>Grade 8</option>
+                <option>Grade 9</option>
+                <option selected="selected">Grade 10</option>
+                <option>Grade 11</option>
+                <option>Grade 12</option>
+            </select>
+
+
+            <textarea id="problem_text" style="width: 400px; height: 300px;" placeholder="Enter Topic Name"></textarea>
+            <img id="output" alt="Preview image" style="display: none;" class="imgpreview_popup" />
+            <button type="button" id="get_help" style="display: none;">Generate</button>
+            <label for="file-upload">
+                <img src="/assets/images/clip-svgrepo-com.svg" height="20px" width="20px" alt="Upload Icon"
+                    style="cursor: pointer;" />
+                <input id="file-upload" type="file" style="display: none;" accept="image/*"
+                    onchange="loadFile(event)" />
+            </label>
+
+        </div>
+
+
+    </div>
+
+    <div id="chat-container"></div>
+    <form id="chat-form">
+        <textarea type="text" id="message" name="message" placeholder="Type your message..."></textarea>
+        <img id="preview2" style="display: none;" class="imgpreview_thumbnail" />
+        <label for="fileInput">
+            <img src="/assets/images/clip-svgrepo-com.svg" height="30px" width="30px" alt="Upload Icon"
+                style="cursor: pointer;" />
+            <input id="fileInput" type="file" style="display: none;" accept="image/*" 
+            onchange="loadFile2(event)" />
+        </label>
+        <button type="submit">Send</button>
+        <button type="button" id="clear-history">New Worksheet</button>
+    </form>
+
+    <div id="dialog-message" title="Select the AI Model">
+        <p>
+            <span class="ui-icon ui-icon-circle-check" style="float:left; margin:0 7px 50px 0;"></span>
+
+        </p>
+        <p>
+        <div class="widget">
+            <fieldset>
+                <legend>Select a Model: </legend>
+                <label for="radio1">claude-3-haiku</label>
+                <input type="radio" name="radio-1" id="radio1"><br />
+                <label for="radio2">claude-3-5-sonnet</label>
+                <input type="radio" name="radio-1" id="radio2" checked="checked"><br />
+                <label for="radio3">claude-3-opus</label>
+                <input type="radio" name="radio-1" id="radio3">
+            </fieldset>
+        </div>
+
+        </p>
+    </div>
+
+    <script>
+        let user_role = '{ROLE}';
+        let user_conversationHistory_key = '{ROLE}-{OBJECTIVE}';
+        let user_ai_model_name = '{AI_MODEL}';
+        let user_objective = "{OBJECTIVE}";
+        let user_custom_message = '{CUSTOM_MESSAGE}';
+
+    </script>
+    <script src="/assets/message.js" type="text/javascript"></script>
+    <script src="/assets/fileupload.js" type="text/javascript"></script>
+
+
+</body>
+
+</html>

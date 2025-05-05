@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edu Evaluation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="shortcut icon" href="/learn-icon.png">
+    <style>
+        body, input {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            text-align: center;
+            font-weight: 500;
+            margin: 16px;
+        }
+        h2 {
+            text-align: center;
+            font-weight: 500;
+            margin: 13px;
+        }
+        #chat-container {
+            flex: 1;
+            margin: 0 auto;
+            background-color: #f6f8fa;
+            padding: 16px;
+            overflow: auto;
+            max-width: 800px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .user-message {
+            justify-content: flex-end;
+        }
+
+        .bot-message, .system-message {
+            justify-content: flex-start;
+        }
+
+        .message-text {
+            background-color: #ffffff;
+            padding: 10px;
+            border-radius: 20px;
+            max-width: 70%;
+            line-height: 1.5;
+        }
+
+        .user-message .message-text {
+            background-color: #006bff;
+            color: #ffffff;
+        }
+
+        .system-message .message-text {
+            background-color: transparent;
+            color: #777;
+            font-style: italic;
+            border: none;
+        }
+
+        #chat-form {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 auto;
+            padding: 16px;
+            max-width: 800px;
+            width: 100%;
+            box-sizing: border-box;
+            background-color: #eef1f4;
+        }
+
+        #message {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 20px;
+            border: none;
+            margin-right: 8px;
+            outline: none;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 20px;
+            border: none;
+            background-color: #006bff;
+            color: #ffffff;
+            cursor: pointer;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Aanya AI Tutor - {ROLE}</h1>
+    <h2>{OBJECTIVE}</h2>
+    <div id="chat-container">
+        <p>
+            The Role {ROLE} and {OBJECTIVE} are not supported as of now
+        </p>
+
+    </div>
+
+
+    
+</body>
+</html>

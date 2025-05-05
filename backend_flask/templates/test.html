@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>test</title>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.3/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="/assets/jquery-ui.theme.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.3/jquery-ui.js"></script>
+    <script>
+        $(function () {
+            $("input").checkboxradio();
+            $(".widget input[type=submit], .widget a, .widget button").button();
+
+            $("#btn").on("click", function (event) {
+                console.log("click")
+                $("#dialog-message").dialog( "open" );
+            });
+
+            $("#btn2").on("click", function (event) {
+                console.log("click")
+                $("#dialog-message").dialog( "open" );
+            });
+        });
+
+        $(function () {
+            $("#dialog-message").dialog({
+                modal: true,
+                buttons: {
+                    Ok: function () {
+                        $(this).dialog("close");
+                    }
+                }
+            });
+        });
+
+
+
+
+    </script>
+</head>
+
+<body>
+    <button class="ui-button ui-widget ui-corner-all" id="btn2">A button element</button>
+    <img src="assets/back.jpeg" id="btn" height="40px" width="40px" />
+    <div id="dialog-message" title="Select the AI Model">
+        <p>
+            <span class="ui-icon ui-icon-circle-check" style="float:left; margin:0 7px 50px 0;"></span>
+
+        </p>
+        <p>
+        <div class="widget">
+            <fieldset>
+                <legend>Select a Model: </legend>
+                <label for="radio-1">New York</label>
+                <input type="radio" name="radio-1" id="radio-1" checked="checked"><br/>
+                <label for="radio-2">Paris</label>
+                <input type="radio" name="radio-1" id="radio-2"><br/>
+                <label for="radio-3">London</label>
+                <input type="radio" name="radio-1" id="radio-3">
+            </fieldset>
+        </div>
+
+        </p>
+    </div>
+
+
+
+
+
+
+</body>
+
+</html>

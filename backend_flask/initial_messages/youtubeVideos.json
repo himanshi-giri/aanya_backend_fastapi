@@ -1,0 +1,6 @@
+{
+    "content": [{"type":"text","text":"Give me a YouTube video link, and I'll create guiding questions for it."}],
+        "show_inputs": false,
+        "require_grade": false,
+        "require_topic": false
+}

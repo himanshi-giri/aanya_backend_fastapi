@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aanya AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="shortcut icon" href="/learn-icon.png">
+    <link rel="stylesheet" href="/assets/ekamai.css">
+
+    <style>
+        .btn_container {
+            text-align: center;
+            border-color: #006bff;
+            border-width: 1px;
+            border-radius: 10px;
+            border-style: solid;
+            text-decoration: none;
+            margin: 10px;
+            width: 100%;
+            max-width: 300px;
+            padding: 10px;
+            text-decoration: none;
+
+        }
+    </style>
+
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.3/themes/base/jquery-ui.css">
+
+    <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.3/jquery-ui.js"></script>
+    <script>
+        $(function () {
+            $("#tabs").tabs();
+        });
+    </script>
+
+
+</head>
+
+<body>
+    <div class="app-bar">
+        <!-- Your app bar content here -->
+
+        <span class="h1">Aanya AI</span>
+
+    </div>
+
+    <div id="chat-container">
+        <div id="tabs">
+            <ul>
+                <li><a href="#tabs-1">Student</a></li>
+                <li><a href="#tabs-2">Teacher</a></li>
+                <li><a href="#tabs-3">Chatbot</a></li>
+            </ul>
+            <div id="tabs-1">
+                <p>
+                <div class="btn_container">
+                    <a href='/edu/student/teachme'>
+                        <div>Teach Me a New Topic</div>
+                    </a>
+                </div>
+                <div class="btn_container">
+                    <a href='/edu/student/helponproblem'>
+                        <div>Help me with a Problem/Doubt</div>
+                    </a>
+                </div>
+                <div class="btn_container">
+                    <a href='/edu/student/feedbackwriting'>
+                        <div>Get Feedback on Writing</div>
+                    </a>
+                </div>
+                <div class="btn_container">
+                    <a href='/edu/student/talktohistoricalfigure'>
+                        <div>Talk to a Historical Figure</div>
+                    </a>
+                </div>
+
+
+                </p>
+            </div>
+            <div id="tabs-2">
+                <p>
+                <div class="btn_container">
+                    <a href='/edu/teacher/worksheets'>
+                        <span>Generate Worksheets</span>
+                    </a>
+                </div>
+                <div class="btn_container">
+                    <a href='/edu/teacher/createassessments'>
+                        <span>Create Assessments</span>
+                    </a>
+                </div>
+                <div class="btn_container">
+                    <a href='/edu/teacher/youtubequestions'>
+                        <span>YouTube Video Guiding Questions</span>
+                    </a>
+                </div>
+                <div class="btn_container">
+                    <a href='/edu/teacher/genereratecontent'>
+                        <span>Generate Original Academic Content</span>
+                    </a>
+                </div>
+                </p>
+
+            </div>
+            <div id="tabs-3">
+                <p>
+                <div class="btn_container">
+                    <a href='/edu/teacher/chatbot'>
+                        <span>Chat Bot</span>
+                    </a>
+                </div>
+
+                </p>
+
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

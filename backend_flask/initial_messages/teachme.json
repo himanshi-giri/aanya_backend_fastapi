@@ -1,0 +1,5 @@
+{ "content":[{"type":"text","text":"Great! I'll be teaching you. What topic should we focus on today?"}]
+,"show_inputs": true,
+"require_grade": true,
+"require_topic": true
+}
