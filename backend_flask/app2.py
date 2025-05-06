@@ -1,3 +1,4 @@
+
 from database.db import init_db
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
@@ -14,8 +15,8 @@ init_db()
 
 
 from database.db import users_collection , models
-
-from routes import user_routes, auth_routes, file_routes, api_routes, teach_routes
+from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
+from routes.v2 import API_routes  # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
@@ -34,7 +35,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.include_router(user_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(file_routes.router)
-app.include_router(api_routes.router)
+app.include_router(API_routes.router)
 app.include_router(teach_routes.router) # Himanshi
 
 origins = [
