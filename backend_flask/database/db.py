@@ -8,6 +8,9 @@ load_dotenv()
 # MongoDB Global Variables
 client = None
 db = None
+annya_db = None
+new_annya_db = None
+
 users_collection = None
 role_menu_collection = None
 models= None
@@ -16,6 +19,7 @@ def init_db():
     
     """Initialize MongoDB connection and collections."""
     global client, db, users_collection, role_menu_collection, models
+    global  annya_db, new_annya_db
 
     MONGO_URI = os.getenv("MONGO_URI")
     if not MONGO_URI:
@@ -23,11 +27,19 @@ def init_db():
 
     client = MongoClient(MONGO_URI, tlsAllowInvalidCertificates=True)
     db = client.get_database()
-    
+    annya_db = client["annya"]
+    new_annya_db = client["new_Annya"]
+
     # Initialize collections
-    users_collection = db["users"]
-    models=db["models"]
-    role_menu_collection = db["role_menu"]
+    users_collection = annya_db["users"]
+    models = annya_db["models"]
+    role_menu_collection = annya_db["role_menu"]
+    # users_collection = db["users"]
+    # models=db["models"]
+    # role_menu_collection = db["role_menu"]
+
+    new_users_collection = new_annya_db["users"]
+
     print("✅ MongoDB initialized successfully!")
 
 def close_db():
