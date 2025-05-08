@@ -1,20 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException
-from app.models.assessment import SelfAssessmentRequest
-from app.services.self_assessment import save_assessment, get_assessment
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from database.db import assessment_collection
+from helpers.auth_utils import get_current_user  # a function that decodes token
 
-router = APIRouter(prefix="/v2", tags=["Assessment"])
+router = APIRouter(prefix="/v2", tags=["Auth"])
 
+class SelfAssessmentRequest(BaseModel):
+    levels: dict
 @router.post("/self-assessment")
-async def submit_self_assessment(
-    request: SelfAssessmentRequest,
-    user_id: str  # Assuming you pass this from auth/session
-):
-    result = await save_assessment(user_id, request)
-    return {"message": "Saved", "result": result}
+async def save_self_assessment(data: SelfAssessmentRequest, request: Request, user=Depends(get_current_user)):
+    try:
+        user_id = user["userId"]
+
+        assessment_collection.update_one(
+            {"userId": user_id},
+            {
+                "$set": {
+                    "levels": data.levels,
+                   
+                }
+            },
+            upsert=True
+        )
+
+        return {"message": "Self-assessment saved successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/self-assessment")
-async def fetch_self_assessment(user_id: str):
-    data = await get_assessment(user_id)
-    if not data:
-        raise HTTPException(status_code=404, detail="No self-assessment data found")
-    return {"message": "Fetched", "data": data}
+async def get_self_assessment(user=Depends(get_current_user)):
+    try:
+        user_id = user["userId"]
+
+        data = assessment_collection.find_one({"userId": user_id}, {"_id": 0, "levels": 1})
+        return {"levels": data["levels"] if data else {}}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -16,8 +16,10 @@ load_dotenv()
 
 
 from database.db import users_collection , models, new_users_collection, leaderboard_collection
-from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
-from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,auth  # v2 route
+
+from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes/
+
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_routes  # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
@@ -34,15 +36,16 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.include_router(user_routes.router)
-app.include_router(auth_routes.router)
 app.include_router(file_routes.router)
 app.include_router(API_routes.router)
 app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
-#app.include_router(Doubt_solver.router)
+# app.include_router(Doubt_solver.router)
+app.include_router(auth_routes.router)
+app.include_router(Auth_routes.router)
 
-app.include_router(auth.router)
+
 origins = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5173/",    
