@@ -2,6 +2,7 @@ import os
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
+
 # Load environment variables
 load_dotenv()
 
@@ -17,10 +18,11 @@ role_menu_collection = None
 models= None
 leaderboard_collection = None
 new_users_collection = None 
+Doubt_solver=None
 def init_db():
     
     """Initialize MongoDB connection and collections."""
-    global client, db, users_collection, role_menu_collection, models, new_users_collection, leaderboard_collection ,new_users_collection
+    global client, db, users_collection, role_menu_collection, models, new_users_collection, leaderboard_collection ,Doubt_solver
     global  annya_db, new_annya_db, assessment_collection
 
     MONGO_URI = os.getenv("MONGO_URI")
