@@ -3,6 +3,7 @@ from database.db import init_db
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic_settings import BaseSettings
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import os
@@ -16,13 +17,13 @@ init_db()
 
 from database.db import users_collection , models
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
-from routes.v2 import API_routes,play_with_friend  # v2 route
+from routes.v2 import API_routes,play_with_friend ,Doubt_solver # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
 
 SECRET_KEY = os.getenv("SECRET_KEY")
-
+MONGODB_URI: str = os.getenv("MONGODB_URI", "")
 # Initialize FastAPI app
 app = FastAPI()
  
@@ -38,6 +39,8 @@ app.include_router(file_routes.router)
 app.include_router(API_routes.router)
 app.include_router(play_with_friend.router)
 app.include_router(teach_routes.router) # Himanshi
+app.include_router(Doubt_solver.router)
+
 
 origins = [
     "http://127.0.0.1:5173",
