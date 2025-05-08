@@ -1,5 +1,6 @@
 
 from database.db import init_db
+init_db()
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,12 +12,12 @@ import uvicorn
 
 # Load environment variables
 load_dotenv()
-init_db()
 
 
-from database.db import users_collection , models
+
+from database.db import users_collection , models, new_users_collection, leaderboard_collection
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
-from routes.v2 import API_routes,play_with_friend  # v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard  # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
@@ -37,15 +38,16 @@ app.include_router(auth_routes.router)
 app.include_router(file_routes.router)
 app.include_router(API_routes.router)
 app.include_router(play_with_friend.router)
+app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
 
 origins = [
     "http://127.0.0.1:5173",
-    "http://127.0.0.1:5173/",
-    "http://localhost:3000",    #Himanshi
+    "http://127.0.0.1:5173/",    
     "http://localhost:5173/",
+     "http://localhost:5173",
     "https://tutor.eduai.live",
-   #"*"
+     "*"
     # Add other origins if needed
 ]
 # Enable CORS
