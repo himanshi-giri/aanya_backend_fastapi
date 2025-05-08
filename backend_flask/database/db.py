@@ -10,7 +10,7 @@ client = None
 db = None
 annya_db = None
 new_annya_db = None
-
+new_users_collection=None
 users_collection = None
 role_menu_collection = None
 models= None
@@ -18,7 +18,7 @@ models= None
 def init_db():
     
     """Initialize MongoDB connection and collections."""
-    global client, db, users_collection, role_menu_collection, models
+    global client, db, users_collection, role_menu_collection, models,new_users_collection
     global  annya_db, new_annya_db
 
     MONGO_URI = os.getenv("MONGO_URI")
@@ -37,7 +37,8 @@ def init_db():
     # users_collection = db["users"]
     # models=db["models"]
     # role_menu_collection = db["role_menu"]
-
+    
+    #NEW DB 
     new_users_collection = new_annya_db["users"]
 
     print("✅ MongoDB initialized successfully!")
