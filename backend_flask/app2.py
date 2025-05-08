@@ -18,11 +18,7 @@ load_dotenv()
 
 from database.db import users_collection , models, new_users_collection, leaderboard_collection
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
-<<<<<<< HEAD
-from routes.v2 import API_routes,play_with_friend,leaderboard  # v2 route
-=======
-from routes.v2 import API_routes,play_with_friend ,Doubt_solver,auth # v2 route
->>>>>>> ee85a8a67f6b00eca76d3eac5cdce1da969b222c
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,auth  # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
