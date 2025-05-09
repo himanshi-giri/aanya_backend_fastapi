@@ -13,6 +13,7 @@ annya_db = None
 new_annya_db = None
 new_users_collection=None
 assessment_collection=None
+create_goal=None
 
 users_collections_collection = None
 role_menu_collection = None
@@ -24,7 +25,7 @@ def init_db():
     
     """Initialize MongoDB connection and collections."""
     global client, db, users_collection, role_menu_collection, models, new_users_collection, leaderboard_collection ,Doubt_solver
-    global  annya_db, new_annya_db, assessment_collection
+    global  annya_db, new_annya_db, assessment_collection,create_goal
 
     MONGO_URI = os.getenv("MONGO_URI")
     if not MONGO_URI:
@@ -47,6 +48,7 @@ def init_db():
     new_users_collection = new_annya_db["users"]
     leaderboard_collection = new_annya_db["leaderboard"]
     assessment_collection = new_annya_db["self_assessments"]
+    create_goal = new_annya_db["create_goal"]
     
     print("✅ MongoDB initialized successfully!")
 
