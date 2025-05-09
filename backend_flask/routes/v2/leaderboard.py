@@ -16,16 +16,16 @@ async def get_leaderboard():
     leaderboard_entries = leaderboard_collection.find().sort("score", -1)
 
     for entry in leaderboard_entries:
-        user = new_users_collection.find_one({"_id": ObjectId(entry["user_id"])})
+        user = new_users_collection.find_one({"_id": entry["user_id"]})
         if user:
             leaderboard_data.append({
-                "name": user["name"],
-                "school": user["school"],
-                "subject": entry["subject"],
-                "score": entry["score"],
-                "PreviousLevel":entry["previousLevel"],
-                "CurrentLevel": entry["CurrentLevel"],
-                "last_updated": entry["LastUpdated"],
+                "name": user.get("fullName", "N/A"),
+                "school": user.get("school", "N/A"),
+                "subject": entry.get("subject", "N/A"),
+                "score": entry.get("score", 0),
+                "PreviousLevel": entry.get("previousLevel", "N/A"),
+                "CurrentLevel": entry.get("CurrentLevel", "N/A"),
+                "last_updated": entry.get("LastUpdated", "N/A"),
             })
     return leaderboard_data
 
