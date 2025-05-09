@@ -1,3 +1,72 @@
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from database.db import uploads_collection, solutions_collection, conversation_collection, fs_bucket
+from bson.objectid import ObjectId
+from datetime import datetime
+from typing import List
+import gridfs
+
+router = APIRouter()
+
+@router.post("/upload/")
+async def upload_file(
+    file: UploadFile = File(...),
+    user_id: str = Form(...),
+    subject: str = Form(...),
+    question_text: str = Form(...)
+):
+    try:
+        contents = await file.read()
+        upload_result = await fs_bucket.upload_from_stream(file.filename, contents)
+        
+        upload_data = {
+            "user_id": user_id,
+            "filename": file.filename,
+            "subject": subject,
+            "question_text": question_text,
+            "file_id": upload_result,
+            "timestamp": datetime.utcnow()
+        }
+
+        result = await uploads_collection.insert_one(upload_data)
+        return {"message": "Upload successful", "upload_id": str(result.inserted_id)}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/uploads/{user_id}")
+async def get_uploads(user_id: str):
+    uploads = await uploads_collection.find({"user_id": user_id}).to_list(length=100)
+    return uploads
+
+
+@router.post("/solution/")
+async def add_solution(
+    upload_id: str = Form(...),
+    solution_text: str = Form(...)
+):
+    try:
+        solution_data = {
+            "upload_id": ObjectId(upload_id),
+            "solution_text": solution_text,
+            "timestamp": datetime.utcnow()
+        }
+
+        result = await solutions_collection.insert_one(solution_data)
+        return {"message": "Solution added", "solution_id": str(result.inserted_id)}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/solution/{upload_id}")
+async def get_solution(upload_id: str):
+    solution = await solutions_collection.find_one({"upload_id": ObjectId(upload_id)})
+    if not solution:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    return solution
+
+
 # from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
 # from pydantic import BaseModel
 # import os
@@ -32,6 +101,9 @@
 # fs_bucket = AsyncIOMotorGridFSBucket(db)
 
 # # Create collections
+
+
+
 # uploads_collection = db.uploads
 # solutions_collection = db.solutions
 # conversation_collection = db.conversations

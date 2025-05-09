@@ -42,7 +42,7 @@ app.include_router(API_routes.router)
 app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
-# app.include_router(Doubt_solver.router)
+app.include_router(Doubt_solver.router)
 app.include_router(auth_routes.router)
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
