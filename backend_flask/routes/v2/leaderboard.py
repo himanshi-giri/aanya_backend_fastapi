@@ -5,7 +5,7 @@ from datetime import datetime
 from bson import ObjectId
 from database.db import  leaderboard_collection, new_users_collection
 
-router = APIRouter(prefix="/v2", tags=["Leaderboard"])
+router = APIRouter(prefix="/v2", tags=["Leaderboard_v1"])
 
 
 # route for getting leaderboard info from leaderboard collection and user collection

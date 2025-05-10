@@ -20,7 +20,7 @@ from database.db import users_collection , models, new_users_collection, leaderb
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
 
-from routes.v2 import API_routes,play_with_friend,leaderboard  # v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard, leaderboard_route   # v2 route
 
 
   # v1 routes/
@@ -47,7 +47,7 @@ app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
 app.include_router(Doubt_solver.router)
-
+app.include_router(leaderboard_route.router)
 app.include_router(auth_routes.router)
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
