@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from database.db import assessment_collection
+from database.db import self_assessment_collection
 from helpers.auth_utils import get_current_user  # a function that decodes token
 
-router = APIRouter(prefix="/v2", tags=["Auth"])
+router = APIRouter()
 
 class SelfAssessmentRequest(BaseModel):
     levels: dict
-@router.post("/self-assessment")
+
+@router.post("/v2/self-assessment")
 async def save_self_assessment(data: SelfAssessmentRequest, request: Request, user=Depends(get_current_user)):
     try:
         user_id = user["userId"]
 
-        assessment_collection.update_one(
+        self_assessment_collection.update_one(
             {"userId": user_id},
             {
                 "$set": {
@@ -29,12 +30,12 @@ async def save_self_assessment(data: SelfAssessmentRequest, request: Request, us
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/self-assessment")
+@router.get("/v2/self-assessment")
 async def get_self_assessment(user=Depends(get_current_user)):
     try:
         user_id = user["userId"]
 
-        data = assessment_collection.find_one({"userId": user_id}, {"_id": 0, "levels": 1})
+        data = self_assessment_collection.find_one({"userId": user_id}, {"_id": 0, "levels": 1})
         return {"levels": data["levels"] if data else {}}
 
     except Exception as e:

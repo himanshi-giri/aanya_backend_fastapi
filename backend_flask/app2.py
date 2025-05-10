@@ -1,10 +1,10 @@
 
+from re import sub
 from database.db import init_db
 init_db()
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic_settings import BaseSettings
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import os
@@ -17,17 +17,20 @@ load_dotenv()
 
 
 from database.db import users_collection , models, new_users_collection, leaderboard_collection
+
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
 
 from routes.v2 import API_routes,play_with_friend,leaderboard  # v2 route
 
 
+  # v1 routes/
 
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_routes ,subjects # v2 route
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
 
 SECRET_KEY = os.getenv("SECRET_KEY")
-MONGODB_URI: str = os.getenv("MONGODB_URI", "")
+MONGO_URI= os.getenv("MONGO_URI")
 # Initialize FastAPI app
 app = FastAPI()
  
@@ -38,13 +41,17 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.include_router(user_routes.router)
-app.include_router(auth_routes.router)
 app.include_router(file_routes.router)
 app.include_router(API_routes.router)
 app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
-# app.include_router(Doubt_solver.router)
+app.include_router(Doubt_solver.router)
+
+app.include_router(auth_routes.router)
+app.include_router(Auth_routes.router)
+app.include_router(subjects.router)
+
 
 
 origins = [
