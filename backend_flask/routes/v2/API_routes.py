@@ -3,6 +3,7 @@ from pydantic import BaseModel, RootModel
 from database.db import assessment_collection, create_goal  # Import your goals collection
 from typing import Dict, Optional
 import jwt as pyjwt
+from typing import List
 
 router = APIRouter(prefix="/v2", tags=["Auth"])
 
@@ -114,3 +115,18 @@ async def save_createGoal(
             raise HTTPException(status_code=500, detail=f"Failed to create goal: {str(e)}")
     else:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+
+@router.get("/get-goals")
+async def get_user_goals(user=Depends(get_current_user)):
+    try:
+        user_id = user["userId"]
+        goals_cursor = create_goal.find({"userId": user_id})
+        goals = []
+        for goal in goals_cursor:
+            goal["_id"] = str(goal["_id"])  # Convert ObjectId to string
+            goals.append(goal)
+        return {"goals": goals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving goals: {str(e)}")
