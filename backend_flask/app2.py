@@ -20,7 +20,7 @@ from database.db import users_collection , models, new_users_collection, leaderb
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes/
 
-from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_routes ,subjects # v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_routes ,subjects,User_route # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
@@ -36,6 +36,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Serve the "uploads" directory as static files
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+
 app.include_router(user_routes.router)
 app.include_router(file_routes.router)
 app.include_router(API_routes.router)
@@ -46,6 +47,7 @@ app.include_router(Doubt_solver.router)
 app.include_router(auth_routes.router)
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
+app.include_router(User_route.router)
 
 
 origins = [

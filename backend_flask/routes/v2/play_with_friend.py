@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 import uuid
 import google.generativeai as genai
 import os  # To access environment variables
+from database.db import challenges_collection,new_users_collection
 
 router = APIRouter(prefix="/play", tags=["Play With Friend"])
 
@@ -116,31 +117,76 @@ async def generate_questions_from_gemini(subject: str, topic: str, level: str = 
 
 # ------------------ Routes ------------------
 
+# @router.post("/challenges")
+# async def create_challenge(data: ChallengeCreate):
+#     challenge_id = str(uuid.uuid4())
+#     invite_code = uuid.uuid4().hex[:6].upper() if not data.opponentId else None
+
+#     challenge_data = {
+#         "creator": data.creatorId,
+#         "opponent": data.opponentId,
+#         "subject": data.subject,
+#         "topic": data.topic,
+#         "level": data.level,
+#         "questions": [],
+#         "answers": {},
+#         "inviteCode": invite_code,
+#         "status": "ready" if data.opponentId else "waiting"
+#     }
+
+#     challenges[challenge_id] = challenge_data
+
+#     return {
+#         "challengeId": challenge_id,
+#         "inviteCode": invite_code,
+#         "status": challenge_data["status"]
+#     }
+
+async def generate_unique_invite_code():
+    while True:
+        code = uuid.uuid4().hex[:6].upper()
+        existing = challenges_collection.find_one({"inviteCode": code})
+        if not existing:
+            return code
+
 @router.post("/challenges")
 async def create_challenge(data: ChallengeCreate):
     challenge_id = str(uuid.uuid4())
-    invite_code = uuid.uuid4().hex[:6].upper() if not data.opponentId else None
-
-    challenge_data = {
+    
+    invite_code =await generate_unique_invite_code() if not data.opponentId else None
+    print(invite_code)
+    Questions=generate_sample_questions(data.subject,data.topic,data.level)
+    challenge_doc = {
+        "_id": challenge_id,
         "creator": data.creatorId,
         "opponent": data.opponentId,
         "subject": data.subject,
         "topic": data.topic,
         "level": data.level,
-        "questions": [],
+        "questions": Questions,
         "answers": {},
         "inviteCode": invite_code,
         "status": "ready" if data.opponentId else "waiting"
     }
 
-    challenges[challenge_id] = challenge_data
+    challenges_collection.insert_one(challenge_doc)
+    print(new_users_collection.find_one({"userId": data.creatorId}))
+    # Optionally, store challenge ID in user profile
+    new_users_collection.update_one(
+        {"userId": data.creatorId},
+        {"$addToSet": {"challenges": challenge_id}}
+    )
+    if data.opponentId:
+        new_users_collection.update_one(
+            {"_id": data.opponentId},
+            {"$addToSet": {"challenges": challenge_id}}
+        )
 
     return {
         "challengeId": challenge_id,
         "inviteCode": invite_code,
-        "status": challenge_data["status"]
+        "status": challenge_doc["status"]
     }
-
 @router.post("/challenges/join")
 async def join_challenge(data: JoinChallenge):
     for cid, ch in challenges.items():
@@ -154,7 +200,7 @@ async def join_challenge(data: JoinChallenge):
 
 @router.post("/challenges/{challenge_id}/start")
 async def start_challenge(challenge_id: str):
-    challenge = challenges.get(challenge_id)
+    challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
@@ -172,7 +218,7 @@ async def start_challenge(challenge_id: str):
 
 @router.post("/challenges/{challenge_id}/answer")
 async def submit_answer(challenge_id: str, data: AnswerSubmission):
-    challenge = challenges.get(challenge_id)
+    challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
@@ -185,7 +231,7 @@ async def submit_answer(challenge_id: str, data: AnswerSubmission):
 
 @router.get("/challenges/{challenge_id}/result")
 async def get_result(challenge_id: str):
-    challenge = challenges.get(challenge_id)
+    challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 

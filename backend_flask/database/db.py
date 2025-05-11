@@ -23,11 +23,12 @@ uploads_collection = None
 solutions_collection = None
 conversation_collection = None
 fs_bucket = None
+challenges_collection=None
 
 def init_db():
     """Initialize MongoDB connection and collections."""
     global client, db, users_collection, role_menu_collection, models
-    global new_users_collection, leaderboard_collection, assessment_collection
+    global new_users_collection, leaderboard_collection, assessment_collection,challenges_collection
     global Doubt_solver, uploads_collection, solutions_collection, conversation_collection, fs_bucket
     global annya_db, new_annya_db
 
@@ -51,6 +52,7 @@ def init_db():
     uploads_collection = new_annya_db["uploads"]
     solutions_collection = new_annya_db["solutions"]
     conversation_collection = new_annya_db["conversation"]
+    challenges_collection = new_annya_db["challenges"]
 
     fs_bucket = GridFS(db)  # ✅ Sync version of GridFS
 
