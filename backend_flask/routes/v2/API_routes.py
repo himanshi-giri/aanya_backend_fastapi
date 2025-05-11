@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, RootModel
-from database.db import assessment_collection, create_goal  # Import your goals collection
+from database.db import assessment_collection, create_goal, leaderboard_collection  # Added leaderboard_logs
 from typing import Dict, Optional
 import jwt as pyjwt
 from typing import List
+from datetime import datetime  # For logging timestamp
 
 router = APIRouter(prefix="/v2", tags=["Auth"])
 
-SECRET_KEY = "your_secret_key_here"  # Make sure this is the same as in your auth_utils.py
+SECRET_KEY = "your_secret_key_here"
 ALGORITHM = "HS256"
 
 class LevelInfo(BaseModel):
@@ -47,7 +48,6 @@ def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = auth_header.split(" ")[1]
-
     try:
         payload = pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
@@ -56,34 +56,89 @@ def get_current_user(request: Request):
     except pyjwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# Map for comparing levels
+level_order = {
+    "Beginner": 1,
+    "Developing": 2,
+    "Proficient": 3,
+    "Advanced": 4,
+    "Mastery": 5
+}
+
+# Compare new vs old and log improvements
+def compare_and_log_improvements(user_id, user_name, school, old_data, new_data):
+    def traverse(subject, topic, old, new, path=[]):
+        improvements = []
+
+        if old is None or new is None:
+            return improvements
+
+        old_level = old.get("level")
+        new_level = new.get("level")
+
+        if old_level and new_level and level_order.get(new_level, 0) > level_order.get(old_level, 0):
+            improvements.append({
+                "userId": user_id,
+                "name": user_name,
+                "school": school,
+                "subject": subject,
+                "topic": topic,
+                "subtopic": " > ".join(path) if path else None,
+                "from_level": old_level,
+                "to_level": new_level,
+                "timestamp": datetime.utcnow()
+            })
+
+        old_subs = old.get("subtopics")
+        new_subs = new.get("subtopics")
+
+        if old_subs and new_subs:
+            for key in new_subs:
+                if key in old_subs:
+                    improvements += traverse(subject, topic, old_subs[key], new_subs[key], path + [key])
+
+        return improvements
+
+    improvements = []
+    for subject, topics in new_data.items():
+        for topic, new_topic_data in topics.items():
+            old_topic_data = old_data.get(subject, {}).get(topic, {})
+            improvements += traverse(subject, topic, old_topic_data, new_topic_data)
+
+    if improvements:
+        leaderboard_collection.insert_many(improvements)
+
 @router.post("/self-assessment")
-async def save_self_assessment(
-    data: SelfAssessmentRequest,
-    request: Request,
-):
-    user_id = request.headers.get("X-User-ID")
-    token_payload = decode_token(request)
-
-    if token_payload:
-        user_id = token_payload.get("userId")
-
-    if user_id:
-        try:
-            assessment_collection.update_one(
-                {"userId": user_id},
-                {
-                    "$set": {
-                        "levels": data.levels.model_dump(),
-                    }
-                },
-                upsert=True,
-            )
-            return {"message": "Self-assessment saved successfully"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    else:
+async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
+    user = decode_token(request)
+    if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    user_id = user["userId"]
+    user_name = user.get("fullName", "Unknown")
+    school = user.get("school", "Unknown")
+
+    new_levels = data.levels.model_dump()
+
+    # Fetch previous data for comparison
+    previous_record = assessment_collection.find_one({"userId": user_id})
+    previous_levels = previous_record.get("levels", {}) if previous_record else {}
+
+    try:
+        # Save new assessment
+        assessment_collection.update_one(
+            {"userId": user_id},
+            {"$set": {"levels": new_levels}},
+            upsert=True
+        )
+
+        # Compare and log improvements
+        compare_and_log_improvements(user_id, user_name, school, previous_levels, new_levels)
+
+        return {"message": "Self-assessment updated and improvements logged"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @router.get("/self-assessment")
 async def get_self_assessment(user=Depends(get_current_user)):
     try:
