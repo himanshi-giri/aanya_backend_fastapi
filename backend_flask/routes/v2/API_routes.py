@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, RootModel
-from database.db import assessment_collection, create_goal  # Import your goals collection
+from database.db import assessment_collection, create_goal ,class_tenth_collection 
 from typing import Dict, Optional
 import jwt as pyjwt
 
@@ -114,3 +114,16 @@ async def save_createGoal(
             raise HTTPException(status_code=500, detail=f"Failed to create goal: {str(e)}")
     else:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    
+    
+@router.get("/class-tenth")
+async def get_class_tenth():
+    try:
+        syllabus_data = class_tenth_collection.find_one({}, {"_id": 0})
+        if syllabus_data:
+            return syllabus_data
+        else:
+            raise HTTPException(status_code=404, detail="Class tenth syllabus data not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching class tenth syllabus: {str(e)}")
