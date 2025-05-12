@@ -12,6 +12,7 @@ subject_topic_map = {
 
 @router.get("/subjects", response_model=List[str])
 def get_subjects():
+    
     return list(subject_topic_map.keys())
 
 @router.get("/topics", response_model=List[str])
