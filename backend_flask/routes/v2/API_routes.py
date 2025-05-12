@@ -143,3 +143,5 @@ async def get_user_goals(user=Depends(get_current_user)):
         return {"goals": goals}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving goals: {str(e)}")
+    
+

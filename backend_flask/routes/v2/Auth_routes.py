@@ -1,26 +1,34 @@
-from fastapi import APIRouter, HTTPException
+# routes/v2/Auth_routes.py
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
-from database.db import new_users_collection, assessment_collection
-from helpers.constants import default_levels
-from copy import deepcopy
+from database.db import new_users_collection
 import jwt as pyjwt
-from bson import ObjectId
+import random
+import string
+import os
+import aiosmtplib
 
 router = APIRouter(prefix="/v2/auth", tags=["Auth"])
 
-SECRET_KEY = "your_secret_key_here"  # Replace with a secure key
 ALGORITHM = "HS256"
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+MAIL_SERVER = os.getenv("MAIL_SERVER")
+MAIL_PORT = os.getenv("MAIL_PORT")
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+MAIL_FROM = os.getenv("MAIL_FROM")
 
 
 # === Pydantic Schemas ===
-
 class SignupRequest(BaseModel):
     userId: str
     fullName: str
     email: EmailStr
     password: str
-    role:str
+    role: str
+    handle: str
 
 
 class LoginRequest(BaseModel):
@@ -28,35 +36,158 @@ class LoginRequest(BaseModel):
     password: str
 
 
-# === Routes ===
+class VerifyOTPRequest(BaseModel):  # Added for OTP verification
+    email: EmailStr
+    otp: str
 
-@router.post('/signup')
+
+class UserResponse(BaseModel):  # Added for /verify-otp
+    userId: str
+    email: EmailStr
+    fullName: str
+
+
+# --- Utility Functions ---
+def generate_otp(length: int = 6) -> str:
+    """Generates a random numeric OTP of the specified length."""
+    characters = string.digits
+    return "".join(random.choice(characters) for _ in range(length))
+
+
+async def send_verification_email_otp(email: EmailStr, otp: str):
+    """Sends an email containing the OTP for verification."""
+    subject = "Verify your email address"
+    body = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                color: #333;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+            }}
+            .container {{
+                background-color: #fff;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                text-align: center;
+                width: 80%;
+                max-width: 600px;
+            }}
+            h1 {{
+                color: #4CAF50;
+            }}
+            p {{
+                font-size: 16px;
+                margin-bottom: 20px;
+            }}
+            .otp {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #007bff;
+                padding: 10px;
+                border: 1px solid #007bff;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                display: inline-block;
+            }}
+            .button {{
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                text-decoration: none;
+                display: inline-block;
+                margin-top: 20px;
+            }}
+            .button:hover {{
+                background-color: #45a049;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Hii Vinay this side</h1>
+            <p>Please use the following One-Time Password (OTP) to verify your email address:</p>
+            <div class="otp">{otp}</div>
+            <p>This OTP is valid for 15 minutes.</p>
+            <p>If you did not request this verification, please ignore this email.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    message = f"Subject: {subject}\n" \
+              f"Content-Type: text/html\n" \
+              f"\n{body}"
+    try:
+        smtp = aiosmtplib.SMTP(
+            hostname=MAIL_SERVER, port=MAIL_PORT, use_tls=True
+        )  # Use TLS
+        await smtp.connect()
+        await smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+        await smtp.send_message(
+            message, from_addr=MAIL_FROM, to_addrs=[email]
+        )
+        await smtp.quit()
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to send verification email"
+        )
+
+
+
+
+# === Routes ===
+@router.post("/signup")
 async def register_user(request: SignupRequest):
     try:
         # Check if user already exists
         if new_users_collection.find_one({"email": request.email}):
-            raise HTTPException(status_code=400, detail="User with this email already exists")
+            raise HTTPException(
+                status_code=400, detail="User with this email already exists"
+            )
+
+        otp = generate_otp()
+        otp_expiry = datetime.utcnow() + timedelta(
+            minutes=15
+        )  # OTP expires in 15 minutes
 
         # Create the user
         new_user = {
             "userId": request.userId,
             "fullName": request.fullName,
             "email": request.email,
-            "password": request.password,
-            "role":request.role,
-            "createdAt": datetime.utcnow()
+            "password": request.password,  # Store the plain password temporarily
+            "role": request.role,
+            "handle":request.handle,
+            "is_verified": False,  # Add is_verified field
+            "otp": otp,  # Store the OTP
+            "otp_expiry": otp_expiry,  # Store OTP expiry
+            "createdAt": datetime.utcnow(),
         }
 
         new_users_collection.insert_one(new_user)
-        #creating initial self-assessment entry-every time new user signup all the level is set to beginner
-        try:
-            result = assessment_collection.insert_one({"userId":request.userId,"levels":deepcopy(default_levels)})
-        #print("----------#------------#----------#-----------")
-            print("inseted self-assessment with ID:",result.inserted_id)
-        except Exception as e:
-         print("Self-assessment insert error:",e)
-        return {"message": "User created successfully", "userId": request.userId}
-        
+
+        await send_verification_email_otp(
+            request.email, otp
+        )  
+
+        return {
+            "message": f"OTP sent to {request.email}. Please verify within 15 minutes.",
+            "userId": request.userId,
+        }
 
     except HTTPException as http_err:
         raise http_err
@@ -64,17 +195,25 @@ async def register_user(request: SignupRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
 @router.post("/login")
 async def login_user(request: LoginRequest):
     try:
         user = new_users_collection.find_one({"email": request.email})
-        if not user or user["password"] != request.password:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+        if not user or user["password"] != request.password:  # Check plain password
+            raise HTTPException(
+                status_code=401, detail="Invalid email or password"
+            )
+
+        if not user["is_verified"]:
+            raise HTTPException(
+                status_code=401, detail="Email not verified. Please verify your email."
+            )
 
         token_payload = {
             "userId": user["userId"],
             "email": user["email"],
-            "exp": datetime.utcnow() + timedelta(days=1)
+            "exp": datetime.utcnow() + timedelta(days=1),
         }
 
         session_token = pyjwt.encode(token_payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -84,7 +223,7 @@ async def login_user(request: LoginRequest):
             "userId": user["userId"],
             "email": user["email"],
             "fullName": user["fullName"],
-            "token": session_token
+            "token": session_token,
         }
 
     except HTTPException as http_exc:
@@ -92,3 +231,48 @@ async def login_user(request: LoginRequest):
     except Exception as e:
         print("Login error:", str(e))  # Add this line
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.post("/verify-otp")
+async def verify_otp(verification_data: VerifyOTPRequest):
+    """
+    Verifies the OTP entered by the user.
+    """
+    user = new_users_collection.find_one({"email": verification_data.email})
+    if not user:
+        raise HTTPException(
+            status_code=444, detail="User not found with this email"
+        )  # Changed to 444
+
+    if user["otp"] != verification_data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    if datetime.utcnow() > user["otp_expiry"]:
+        raise HTTPException(
+            status_code=408, detail="OTP has expired. Please request a new one."
+        )  # Changed to 408
+
+    new_users_collection.update_one(
+        {"email": verification_data.email},
+        {
+            "$set": {
+                "is_verified": True,
+                "otp": None,
+                "otp_expiry": None,
+                "updated_at": datetime.utcnow(),
+            }
+        },
+    )
+    updated_user = new_users_collection.find_one(
+        {"email": verification_data.email}
+    )  # get the updated user
+
+    return {
+        "message": "Email verified successfully!",
+        "user": {
+            "userId": updated_user["userId"],  #  userId is already a string
+            "email": updated_user["email"],
+            "fullName": updated_user["fullName"],
+        },  # Return user data
+    }
