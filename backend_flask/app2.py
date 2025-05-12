@@ -20,11 +20,6 @@ from database.db import users_collection , models, new_users_collection, leaderb
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
 
-from routes.v2 import API_routes,play_with_friend,leaderboard  # v2 route
-
-
-  # v1 routes/
-
 from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_routes ,subjects # v2 route
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
