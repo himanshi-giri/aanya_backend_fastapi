@@ -157,7 +157,7 @@ async def create_challenge(data: ChallengeCreate):
     
     invite_code =await generate_unique_invite_code() if not data.opponentId else None
     print(invite_code)
-    Questions=generate_sample_questions(data.subject,data.topic,data.level)
+    Questions= generate_sample_questions(data.subject,data.topic,data.level)
     challenge_doc = {
         "_id": challenge_id,
         "creator": data.creatorId,
