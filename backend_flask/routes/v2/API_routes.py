@@ -78,14 +78,14 @@ def compare_and_log_improvements(user_id, user_name, school, old_data, new_data)
 
         if old_level and new_level and level_order.get(new_level, 0) > level_order.get(old_level, 0):
             improvements.append({
-                "userId": user_id,
-                "name": user_name,
-                "school": school,
+                # "userId": user_id,
+                # "name": user_name,
+                # "school": school,
                 "subject": subject,
                 "topic": topic,
                 "subtopic": " > ".join(path) if path else None,
-                "from_level": old_level,
-                "to_level": new_level,
+                "previous_level": old_level,
+                "new_level": new_level,
                 "timestamp": datetime.utcnow()
             })
 
@@ -106,7 +106,26 @@ def compare_and_log_improvements(user_id, user_name, school, old_data, new_data)
             improvements += traverse(subject, topic, old_topic_data, new_topic_data)
 
     if improvements:
-        leaderboard_collection.insert_many(improvements)
+        #leaderboard_collection.insert_many(improvements)
+        
+        # Update the user's document in leaderboard_collection
+        leaderboard_collection.update_one(
+            {"userId": user_id},
+            {
+                "$set": {
+                    "name": user_name,
+                    "school": school,
+                    "lastUpdated": datetime.utcnow()
+                },
+                "$push": {
+                    "improvements": {"$each": improvements}
+                },
+                "$inc": {
+                    "totalImprovements": len(improvements)
+                }
+            },
+            upsert=True
+        )
 
 @router.post("/self-assessment")
 async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
@@ -116,7 +135,7 @@ async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
 
     user_id = user["userId"]
     user_name = user.get("fullName", "Unknown")
-    school = user.get("school", "Unknown")
+    school = user.get("school", " ")
 
     new_levels = data.levels.model_dump()
 
@@ -141,11 +160,15 @@ async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
     
 @router.get("/self-assessment")
 async def get_self_assessment(user=Depends(get_current_user)):
+#async def get_self_assessment(): 
     try:
         user_id = user["userId"]
+        #user_id = "Ishu"
         data = assessment_collection.find_one({"userId": user_id}, {"_id": 0, "levels": 1})
+        #print(f"Query result for userId 'Ishu': {data}")
         return {"levels": data["levels"] if data and "levels" in data else {}}
     except Exception as e:
+        print(f"Error in get_self_assessment: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/create-goals")

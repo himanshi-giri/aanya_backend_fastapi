@@ -1,39 +1,115 @@
+# backend_flask/routes/v2/leaderboard.py
+
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
-from typing import  List, Dict, Optional
+from typing import List, Dict, Optional
 from datetime import datetime
 from bson import ObjectId
-from database.db import  leaderboard_collection, new_users_collection
+import jwt as pyjwt
+from database.db import leaderboard_collection, new_users_collection
 
 router = APIRouter(prefix="/v2", tags=["Leaderboard_v1"])
 
+SECRET_KEY = "your_secret_key_here"
+ALGORITHM = "HS256"
 
-#route for getting leaderboard info from leaderboard collection and user collection
- 
-# @router.get("/leaderboard")
-# async def get_leaderboard():
-#     leaderboard_data = []
-#     leaderboard_entries = leaderboard_collection.find().sort("score", -1)
+def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
-#     for entry in leaderboard_entries:
-#         user = new_users_collection.find_one({"_id": entry["user_id"]})
-#         if user:
-#             leaderboard_data.append({
-#                 "name": user.get("fullName", "N/A"),
-#                 "school": user.get("school", "N/A"),
-#                 "subject": entry.get("subject", "N/A"),
-#                 "score": entry.get("score", 0),
-#                 "PreviousLevel": entry.get("previousLevel", "N/A"),
-#                 "CurrentLevel": entry.get("CurrentLevel", "N/A"),
-#                 "last_updated": entry.get("LastUpdated", "N/A"),
-#             })
-#     return leaderboard_data
+    token = auth_header.split(" ")[1]
+    try:
+        payload = pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 @router.get("/leaderboard")
 async def get_leaderboard():
     try:
-        # Fetch the latest 50 improvement logs, sorted by timestamp descending
-        logs_cursor = leaderboard_collection.find().sort("timestamp", -1).limit(50)
+        # Define the level order to calculate improvement scores
+        level_order = {
+            "Beginner": 1,
+            "Developing": 2,
+            "Proficient": 3,
+            "Advanced": 4,
+            "Mastery": 5
+        }
+
+        # Use MongoDB aggregation to get one improvement per user
+        pipeline = [
+            # Unwind the improvements array to create a document for each improvement
+            {"$unwind": "$improvements"},
+            # Project the fields we need, including a calculated score
+            {
+                "$project": {
+                    "userId": 1,
+                    "name": 1,
+                    "school": 1,
+                    "subject": "$improvements.subject",
+                    "topic": "$improvements.topic",
+                    "subtopic": "$improvements.subtopic",
+                    "previous_level": "$improvements.previous_level",
+                    "new_level": "$improvements.new_level",
+                    "timestamp": "$improvements.timestamp",
+                    "score": {
+                        "$multiply": [
+                            {
+                                "$subtract": [
+                                    {"$arrayElemAt": [
+                                        [0, 1, 2, 3, 4, 5],
+                                        {
+                                            "$indexOfArray": [
+                                                ["Beginner", "Developing", "Proficient", "Advanced", "Mastery"],
+                                                "$improvements.new_level"
+                                            ]
+                                        }
+                                    ]},
+                                    {"$arrayElemAt": [
+                                        [0, 1, 2, 3, 4, 5],
+                                        {
+                                            "$indexOfArray": [
+                                                ["Beginner", "Developing", "Proficient", "Advanced", "Mastery"],
+                                                "$improvements.previous_level"
+                                            ]
+                                        }
+                                    ]}
+                                ]
+                            },
+                            10
+                        ]
+                    }
+                }
+            },
+            # Sort improvements for each user by score and timestamp
+            {"$sort": {"score": -1, "timestamp": -1}},
+            # Group by userId to get the top improvement per user
+            {
+                "$group": {
+                    "_id": "$userId",
+                    "userId": {"$first": "$userId"},
+                    "name": {"$first": "$name"},
+                    "school": {"$first": "$school"},
+                    "subject": {"$first": "$subject"},
+                    "topic": {"$first": "$topic"},
+                    "subtopic": {"$first": "$subtopic"},
+                    "previous_level": {"$first": "$previous_level"},
+                    "new_level": {"$first": "$new_level"},
+                    "timestamp": {"$first": "$timestamp"},
+                    "score": {"$first": "$score"}
+                }
+            },
+            # Sort users by score and timestamp
+            {"$sort": {"score": -1, "timestamp": -1}},
+            # Limit to top 5 users
+            {"$limit": 5}
+        ]
+
+        # Execute the aggregation pipeline
+        logs_cursor = leaderboard_collection.aggregate(pipeline)
         logs = []
         for log in logs_cursor:
             logs.append({
@@ -45,15 +121,10 @@ async def get_leaderboard():
                 "subtopic": log.get("subtopic"),
                 "previous_level": log.get("previous_level"),
                 "new_level": log.get("new_level"),
-                "timestamp": log.get("timestamp").isoformat() if isinstance(log.get("timestamp"), datetime) else log.get("timestamp")
+                "timestamp": log.get("timestamp").isoformat() if isinstance(log.get("timestamp"), datetime) else log.get("timestamp"),
+                "score": log.get("score")
             })
+
         return {"leaderboard": logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving leaderboard: {str(e)}")
-
-
-
-
-
-
-
