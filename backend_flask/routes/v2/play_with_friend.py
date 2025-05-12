@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional
+from bson import ObjectId
+
 import uuid
 import google.generativeai as genai
 import os  # To access environment variables
@@ -218,20 +220,36 @@ async def start_challenge(challenge_id: str):
 
 @router.post("/challenges/{challenge_id}/answer")
 async def submit_answer(challenge_id: str, data: AnswerSubmission):
-    challenge = challenges_collection.find_one({"_id": challenge_id})
+    try:
+        challenge_obj_id = challenge_id
+    except:
+        raise HTTPException(status_code=400, detail="Invalid challenge ID")
+
+    challenge = challenges_collection.find_one({"_id": challenge_obj_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
     if data.userId not in [challenge['creator'], challenge['opponent']]:
         raise HTTPException(status_code=403, detail="Not a participant.")
 
-    user_answers = challenge['answers'].setdefault(data.userId, {})
-    user_answers[data.questionIndex] = data.answer
+    user_answers = challenge.setdefault("answers", {}).setdefault(data.userId, {})
+    user_answers[str(data.questionIndex)] = data.answer  # ✅ Fix: stringify key
+
+    challenges_collection.update_one(
+        {"_id": challenge_obj_id},
+        {"$set": {f"answers.{data.userId}": user_answers}}
+    )
+
     return {"message": "Answer recorded."}
 
 @router.get("/challenges/{challenge_id}/result")
 async def get_result(challenge_id: str):
-    challenge = challenges_collection.find_one({"_id": challenge_id})
+    try:
+        challenge_obj_id = challenge_id
+    except:
+        raise HTTPException(status_code=400, detail="Invalid challenge ID")
+
+    challenge = challenges_collection.find_one({"_id": challenge_obj_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
@@ -242,12 +260,21 @@ async def get_result(challenge_id: str):
 
     if creator:
         answers_creator = challenge['answers'].get(creator, {})
-        score_creator = sum(1 for idx, q in enumerate(questions) if str(answers_creator.get(idx)) == str(q['answer']))
+        print(answers_creator)
+        # score_creator = sum(
+        #     1 for idx, q in enumerate(questions)
+        #     if str(answers_creator.get(str(idx))) == str(q['answer'])
+        # )
+        # scores[creator] = score_creator
+        score_creator = len(answers_creator)
         scores[creator] = score_creator
 
     if opponent:
         answers_opponent = challenge['answers'].get(opponent, {})
-        score_opponent = sum(1 for idx, q in enumerate(questions) if str(answers_opponent.get(idx)) == str(q['answer']))
+        score_opponent = sum(
+            1 for idx, q in enumerate(questions)
+            if str(answers_opponent.get(str(idx))) == str(q['answer'])
+        )
         scores[opponent] = score_opponent
 
     winner = None
@@ -258,8 +285,9 @@ async def get_result(challenge_id: str):
             winner = opponent
         else:
             winner = "Draw"
-
+    print(scores)
     return {"scores": scores, "winner": winner}
+
 
 @router.get("/challenges/user/{user_id}")
 async def get_user_challenges(user_id: str):
