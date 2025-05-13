@@ -209,12 +209,13 @@ def extract_text_from_image_bytes(image_bytes):
     except Exception as e:
         logger.error(f"OCR error on image bytes: {e}")
         return f"Error extracting text from image: {str(e)}"
-def format_evaluation_prompt(question, student_answer, subject, grade, total_marks):
-    """Create a prompt for Gemini to evaluate the student's answer step-by-step."""
-    prompt = f"""
-You are an expert {subject} teacher evaluating a class {grade} student's answer.
 
-Evaluate the student's answer to the question step-by-step:
+def format_evaluation_prompt(question, student_answer, subject, grade, total_marks):
+    """Create a detailed prompt for Gemini to evaluate mathematics problems with thorough, teacher-like feedback."""
+    
+    # Enhanced prompt specifically for mathematics evaluation with detailed structure
+    prompt = f"""
+You are an expert mathematics teacher evaluating a student's answer to a math problem. Your goal is to provide detailed, educational feedback that helps the student learn from their work. The student is in grade {grade} and studying {subject}.
 
 QUESTION:
 {question}
@@ -222,43 +223,94 @@ QUESTION:
 STUDENT'S ANSWER:
 {student_answer}
 
-TOTAL MARKS POSSIBLE: {total_marks}
+TOTAL MARKS: {total_marks}
 
-Instructions:
-1. Break down the answer into logical steps or subparts.
-2. For each step, assess correctness and assign partial marks.
-3. Provide detailed feedback for each step.
-4. If there's an error, suggest a correction and explain the misconception.
-5. At the end, provide the total marks scored and a final summary.
+Please provide a highly detailed evaluation with the following structure:
 
-Return your response in the following valid JSON format only (no markdown or extra text):
+1. PROBLEM UNDERSTANDING:
+   - Restate what the problem asks for in clear terms
+   - List the given quantities and what needs to be found
+   - Identify the mathematical concepts involved
+
+2. DETAILED EVALUATION OF SOLUTION:
+   - Step-by-step analysis of the student's approach
+   - For each step:
+     * Explain what they did correctly
+     * Point out any conceptual errors
+     * Identify calculation errors
+     * Show correct working for any errors
+   - Comment on the student's logical flow
+   - Evaluate the mathematical soundness of their approach
+
+3. SPECIFIC SCORING BREAKDOWN:
+   - AB + BC + CA = 4 + 3.5 + 2.5 = 10 cm  (Show specific calculations like this)
+   - Provide point-by-point allocation with specific values (like +1 for correctly calculating the perimeter)
+   - Note exactly where marks were awarded and deducted
+   - Provide a final score as a fraction: X/{total_marks}
+
+4. COMPLETE CORRECT SOLUTION:
+   - Show the full correct approach
+   - Include all steps that should have been shown
+   - Highlight key steps with explanations
+
+5. FEEDBACK FOR IMPROVEMENT:
+   - Specific advice for better problem-solving
+   - Areas where conceptual understanding needs strengthening
+   - Tips for better presentation of mathematical work
+
+You MUST format your response as a valid JSON object with the following structure exactly:
 
 {{
-  "score": (final numerical score as float),
-  "feedback": "summary feedback text with emojis",
+  "score": (numerical score as float between 0 and {total_marks}),
+  "feedback": "Brief summary of the evaluation with key strengths and weaknesses",
   "detailed_analysis": {{
-    "stepwise_evaluation": [
+    "problem_statement": "Detailed restatement of the problem with explanation of concepts involved",
+    "approach_evaluation": "Analysis of the student's problem-solving strategy",
+    "step_by_step_analysis": [
       {{
-        "step": "step description",
-        "evaluation": "correct/incorrect/partially correct",
-        "marks_awarded": float,
-        "max_marks": float,
-        "comments": "explanation or correction if any"
+        "step_number": 1,
+        "step_description": "Description of this step in the solution",
+        "student_work": "What the student did in this step",
+        "correctness": "Correct/Partially Correct/Incorrect",
+        "explanation": "Detailed explanation of what's right or wrong",
+        "correction": "The correct approach for this step with explicit calculations"
       }},
-      ...
+      // Additional steps as needed
     ],
-    "strengths": ["list of strengths"],
-    "weaknesses": ["list of weaknesses"],
-    "misconceptions": ["any misconceptions identified"],
-    "corrections": ["specific corrections"],
-    "improvement_tips": ["tips for improvement"]
+    "scoring": {{
+      "breakdown": [
+        {{
+          "component": "Name of scored component (e.g., 'Identifying similar triangles')",
+          "marks_awarded": X,
+          "marks_possible": Y,
+          "justification": "Explanation of why these marks were awarded/deducted"
+        }},
+        // Additional scoring components
+      ],
+      "total_score": "X/{total_marks}"
+    }},
+    "full_solution": "Complete step-by-step correct solution with all necessary calculations shown explicitly",
+    "improvement_suggestions": [
+      "Specific suggestion 1",
+      "Specific suggestion 2",
+      // Additional suggestions
+    ]
   }}
 }}
 
-IMPORTANT: Return ONLY valid JSON. Do not include markdown formatting, code blocks, or any extra text.
+IMPORTANT INSTRUCTIONS:
+1. Your response MUST be in valid JSON format only
+2. Include specific calculations in your analysis, not just general statements
+3. The "step_by_step_analysis" should break down each mathematical step the student took
+4. Make sure all mathematical terms and concepts are accurately explained
+5. Be specific about where points are awarded and deducted
+6. The score must be between 0 and {total_marks}
+7. Ensure each scoring component has specific point values
+8. Do not use markdown or code blocks in your JSON fields
+
+Remember to be precise and educational in your feedback, focusing on helping the student improve their mathematical understanding.
 """
     return prompt
-
 
 async def evaluate_with_gemini(question, student_answer, subject, grade, total_marks, image_content=None):
     """Use Gemini API to evaluate the student's answer, with optional image analysis."""
@@ -297,8 +349,9 @@ async def evaluate_with_gemini(question, student_answer, subject, grade, total_m
         
         # Ensure score is within bounds
         evaluation_data["score"] = max(0, min(float(evaluation_data["score"]), total_marks))
-        
         return evaluation_data
+
+    
     except json.JSONDecodeError as e:
         logger.error(f"JSON parsing error from Gemini response: {e}")
         logger.error(f"Raw response: {response['text']}")
@@ -370,7 +423,6 @@ async def evaluate_text_endpoint(request: dict = Body(...)):
             grade=grade,
             total_marks=total_marks
         )
-        
         return evaluation
     except Exception as e:
         logger.error(f"Evaluation error: {str(e)}")
@@ -478,7 +530,6 @@ async def evaluate_with_image(
             total_marks=totalMarks,
             image_content=image_for_gemini
         )
-        
         return evaluation
     except Exception as e:
         logger.error(f"Evaluation error: {str(e)}")
