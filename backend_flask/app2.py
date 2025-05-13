@@ -20,7 +20,7 @@ from database.db import users_collection , models, new_users_collection, leaderb
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
 
-from routes.v2 import API_routes,play_with_friend,leaderboard  # v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard   # v2 route
 
 
   # v1 routes/
@@ -29,7 +29,7 @@ from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
 
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = "your_secret_key_here"
 MONGO_URI= os.getenv("MONGO_URI")
 # Initialize FastAPI app
 app = FastAPI()
@@ -41,14 +41,23 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
+<<<<<<< HEAD
+=======
+app.include_router(API_routes.router)
+>>>>>>> himanshi
 app.include_router(user_routes.router)
 app.include_router(file_routes.router)
-app.include_router(API_routes.router)
+
 app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
 app.include_router(Doubt_solver.router)
+<<<<<<< HEAD
 app.include_router(auth_routes.router)
+=======
+#Sapp.include_router(leaderboard_route.router)
+#app.include_router(auth_routes.router)
+>>>>>>> himanshi
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
 app.include_router(User_route.router)
