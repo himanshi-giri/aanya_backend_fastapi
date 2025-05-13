@@ -61,7 +61,8 @@ origins = [
     "http://localhost:5173/",
      "http://localhost:5173",
     "https://tutor.eduai.live",
-     "*"
+    "https://redesigned-space-system-9795qg6rg7xq2pqwr-5173.app.github.dev/",
+    "*"
     # Add other origins if needed
 ]
 # Enable CORS

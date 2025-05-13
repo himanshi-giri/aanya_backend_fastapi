@@ -1,133 +1,32 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
-from database.db import uploads_collection, solutions_collection, conversation_collection, fs_bucket
-from bson.objectid import ObjectId
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
+from pydantic import BaseModel
+import os
+import fitz
+import google.generativeai as genai
 from datetime import datetime
-from typing import List
-import gridfs
+import base64
+from typing import Optional
+import random
 
-router = APIRouter()
+from database.db import db ,fs_bucket
 
-@router.post("/upload/")
-async def upload_file(
-    file: UploadFile = File(...),
-    user_id: str = Form(...),
-    subject: str = Form(...),
-    question_text: str = Form(...)
-):
-    try:
-        contents = await file.read()
-        upload_result = await fs_bucket.upload_from_stream(file.filename, contents)
-        
-        upload_data = {
-            "user_id": user_id,
-            "filename": file.filename,
-            "subject": subject,
-            "question_text": question_text,
-            "file_id": upload_result,
-            "timestamp": datetime.utcnow()
-        }
-
-        result = await uploads_collection.insert_one(upload_data)
-        return {"message": "Upload successful", "upload_id": str(result.inserted_id)}
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/uploads/{user_id}")
-async def get_uploads(user_id: str):
-    uploads = await uploads_collection.find({"user_id": user_id}).to_list(length=100)
-    return uploads
-
-
-@router.post("/solution/")
-async def add_solution(
-    upload_id: str = Form(...),
-    solution_text: str = Form(...)
-):
-    try:
-        solution_data = {
-            "upload_id": ObjectId(upload_id),
-            "solution_text": solution_text,
-            "timestamp": datetime.utcnow()
-        }
-
-        result = await solutions_collection.insert_one(solution_data)
-        return {"message": "Solution added", "solution_id": str(result.inserted_id)}
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/solution/{upload_id}")
-async def get_solution(upload_id: str):
-    solution = await solutions_collection.find_one({"upload_id": ObjectId(upload_id)})
-    if not solution:
-        raise HTTPException(status_code=404, detail="Solution not found")
-    return solution
-
-
-# from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
-# from pydantic import BaseModel
-# import os
-# import fitz
-# import google.generativeai as genai
-# from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
-# from datetime import datetime
-# import base64
-# import io
-# from typing import Optional
-# import random
-# import requests
 
 router = APIRouter(prefix="/doubt", tags=["Doubt Solver"])
 
 # Load environment variables
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MONGODB_URI = os.getenv("MONGO_URI")
-
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable not set")
-if not MONGODB_URI:
-    raise ValueError("MONGODB_URI environment variable not set")
 
 # Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize MongoDB connection with Motor (async driver)
-client = AsyncIOMotorClient(MONGODB_URI)
-db = client["doubt_solver"]
-# Use Motor's async GridFS implementation
-fs_bucket = AsyncIOMotorGridFSBucket(db)
-
-# # Create collections
-
-
-
-# uploads_collection = db.uploads
-# solutions_collection = db.solutions
-# conversation_collection = db.conversations
-
 # Pydantic models
 class TextRequest(BaseModel):
     text: str
+    chat_history: Optional[list[str]] = []
 
 class SolutionResponse(BaseModel):
     solution: str
     
-@router.on_event("startup")
-async def startup_db_client():
-    try:
-        await client.admin.command('ping')
-        print("Connected to MongoDB!")
-    except Exception as e:
-        print(f"Error connecting to MongoDB: {e}")
-        
-@router.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
-    print("MongoDB connection closed")
-
 # List of follow-up questions based on subject areas
 follow_up_questions = {
     "math": [
@@ -219,22 +118,36 @@ async def generate_solution(prompt, file_content=None, file_type=None, subject_h
             "timestamp": datetime.now(),
             "subject": subject
         }
-        await solutions_collection.insert_one(solution_doc)
+        db.solutions_collection.insert_one(solution_doc)
         
         return response.text
     except Exception as e:
         print(f"Error generating solution: {e}")
         return f"Sorry, I couldn't generate a solution. Error: {str(e)}"
 
-@router.post("/solve-text")
+@router.post("/solve-text", response_model=SolutionResponse)
 async def solve_text(request: TextRequest):
+    """
+    Process a text query and generate a step-by-step solution
+    """
     try:
-        prompt = f"Explain the solution in a clear, step-by-step manner. Start by identifying what is given and what needs to be found. Then outline the method or concept used to solve it. Solve each step logically, using correct academic notation and terminology (e.g., x², ∫, Δt, moles, sin(θ), etc.), and avoid unnecessary special characters or HTML tags. Keep the explanation structured, not too long, not too short, and conclude with the final answer in a complete sentence. {request.text}"
+        formatted_history = "\n".join(chat for chat in request.chat_history) if request.chat_history else ""
+        prompt = f"""
+You are a helpful and knowledgeable AI tutor. Use the following conversation history to understand the user's context.
+
+Conversation history:
+{formatted_history}
+
+Now answer this question:
+{request.text}
+
+Respond clearly and step-by-step using correct academic notation. Avoid HTML tags. Finish with a brief follow-up question.
+"""
         solution = await generate_solution(prompt)
-        
-        return {"solution": solution}
+        return SolutionResponse(solution=solution)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/upload-file")
 async def upload_file(file: UploadFile = File(...)):
@@ -242,11 +155,11 @@ async def upload_file(file: UploadFile = File(...)):
         # Read file content
         content = await file.read()
         
-        # Store file in MongoDB GridFS using async GridFSBucket
-        file_id = await fs_bucket.upload_from_stream(
-            file.filename,
-            io.BytesIO(content),
-            metadata={"content_type": file.content_type}
+        # Store file in MongoDB GridFS 
+        file_id = db.fs.put(
+            content,
+            filename=file.filename,
+            content_type=file.content_type
         )
         
         # Store file metadata
@@ -257,7 +170,7 @@ async def upload_file(file: UploadFile = File(...)):
             "timestamp": datetime.now()
         }
         
-        await uploads_collection.insert_one(file_metadata)
+        db.uploads_collection.insert_one(file_metadata)
         
         extracted_text = ""
         if file.content_type == "application/pdf":
@@ -297,11 +210,11 @@ async def upload_image(image: UploadFile = File(...)):
         # Read image content
         image_content = await image.read()
         
-        # Store image in MongoDB GridFS using async GridFSBucket
-        file_id = await fs_bucket.upload_from_stream(
-            image.filename,
-            io.BytesIO(image_content),
-            metadata={"content_type": image.content_type}
+        # Store image in MongoDB GridFS
+        file_id = db.fs.put(
+            image_content,
+            filename=image.filename,
+            content_type=image.content_type
         )
         
         # Store image metadata
@@ -312,7 +225,7 @@ async def upload_image(image: UploadFile = File(...)):
             "timestamp": datetime.now()
         }
         
-        await uploads_collection.insert_one(image_metadata)
+        db.uploads_collection.insert_one(image_metadata)
         
         # Generate solution based on image
         prompt = "Please analyze the provided image and Explain the solution in a clear, step-by-step manner. Start by identifying what is given and what needs to be found. Then outline the method or concept used to solve it. Solve each step logically, using correct academic notation and terminology (e.g., x², ∫, Δt, moles, sin(θ), etc.), and avoid unnecessary special characters or HTML tags. Keep the explanation structured, not too long, not too short, and conclude with the final answer in a complete sentence."
@@ -327,11 +240,11 @@ async def send_voice(voice: UploadFile = File(...)):
         # Read voice content
         voice_content = await voice.read()
         
-        # Store voice in MongoDB GridFS using async GridFSBucket
-        file_id = await fs_bucket.upload_from_stream(
-            voice.filename,
-            io.BytesIO(voice_content),
-            metadata={"content_type": voice.content_type}
+        # Store voice in MongoDB GridFS
+        file_id = db.fs.put(
+            voice_content,
+            filename=voice.filename,
+            content_type=voice.content_type
         )
         
         # Store voice metadata
@@ -342,7 +255,7 @@ async def send_voice(voice: UploadFile = File(...)):
             "timestamp": datetime.now()
         }
         
-        await uploads_collection.insert_one(voice_metadata)
+        db.uploads_collection.insert_one(voice_metadata)
         
         # For voice input, placeholder response
         # In a production environment, you would integrate with a speech-to-text service
@@ -370,13 +283,13 @@ async def solve_image_text(
         image_content = await image.read()
         
         # Save to MongoDB
-        file_id = await fs_bucket.upload_from_stream(
-            image.filename,
-            io.BytesIO(image_content),
-            metadata={"content_type": image.content_type}
+        file_id = db.fs_bucket.put(
+            image_content,
+            filename=image.filename,
+            content_type=image.content_type
         )
-
-        await uploads_collection.insert_one({
+        
+        db.uploads_collection.insert_one({
             "grid_fs_id": str(file_id),
             "filename": image.filename,
             "content_type": image.content_type,
@@ -413,7 +326,3 @@ async def solve_image_text(
 @router.post("/test-query")
 async def test_query(query: str = Form(...)):
     return {"received_query": query}
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", port=5000, reload=True)
-
