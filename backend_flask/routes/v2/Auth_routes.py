@@ -8,6 +8,7 @@ import random
 import string
 import os
 import aiosmtplib
+from email.message import EmailMessage
 
 router = APIRouter(prefix="/v2/auth", tags=["Auth"])
 
@@ -59,67 +60,11 @@ async def send_verification_email_otp(email: EmailStr, otp: str):
     subject = "Verify your email address"
     body = f"""
     <html>
-    <head>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background-color: #f4f4f4;
-                color: #333;
-                margin: 0;
-                padding: 0;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-            }}
-            .container {{
-                background-color: #fff;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-                text-align: center;
-                width: 80%;
-                max-width: 600px;
-            }}
-            h1 {{
-                color: #4CAF50;
-            }}
-            p {{
-                font-size: 16px;
-                margin-bottom: 20px;
-            }}
-            .otp {{
-                font-size: 24px;
-                font-weight: bold;
-                color: #007bff;
-                padding: 10px;
-                border: 1px solid #007bff;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                display: inline-block;
-            }}
-            .button {{
-                background-color: #4CAF50;
-                color: white;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 16px;
-                text-decoration: none;
-                display: inline-block;
-                margin-top: 20px;
-            }}
-            .button:hover {{
-                background-color: #45a049;
-            }}
-        </style>
-    </head>
     <body>
-        <div class="container">
+        <div style="font-family: Arial, sans-serif;">
             <h1>Hii Vinay this side</h1>
             <p>Please use the following One-Time Password (OTP) to verify your email address:</p>
-            <div class="otp">{otp}</div>
+            <div style="font-size: 24px; font-weight: bold; color: #007bff;">{otp}</div>
             <p>This OTP is valid for 15 minutes.</p>
             <p>If you did not request this verification, please ignore this email.</p>
         </div>
@@ -127,24 +72,23 @@ async def send_verification_email_otp(email: EmailStr, otp: str):
     </html>
     """
 
-    message = f"Subject: {subject}\n" \
-              f"Content-Type: text/html\n" \
-              f"\n{body}"
+    message = EmailMessage()
+    message["From"] = MAIL_FROM
+    message["To"] = email
+    message["Subject"] = subject
+    message.set_content("This is an HTML email.")
+    message.add_alternative(body, subtype="html")
+
     try:
-        smtp = aiosmtplib.SMTP(
-            hostname=MAIL_SERVER, port=MAIL_PORT, use_tls=True
-        )  # Use TLS
+        smtp = aiosmtplib.SMTP(hostname=MAIL_SERVER, port=int(MAIL_PORT), use_tls=True)
         await smtp.connect()
         await smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
-        await smtp.send_message(
-            message, from_addr=MAIL_FROM, to_addrs=[email]
-        )
+        await smtp.send_message(message)
         await smtp.quit()
     except Exception as e:
         print(f"Error sending email: {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to send verification email"
-        )
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+
 
 
 
