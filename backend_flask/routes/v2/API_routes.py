@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, RootModel
-from database.db import assessment_collection, create_goal, leaderboard_collection  # Added leaderboard_logs
+from database.db import assessment_collection, create_goal, leaderboard_collection,class_tenth_collection,new_users_collection  # Added leaderboard_logs
 from typing import Dict, Optional
 import jwt as pyjwt
 from typing import List
@@ -134,8 +134,14 @@ async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_id = user["userId"]
-    user_name = user.get("fullName", "Unknown")
-    school = user.get("school", " ")
+    # fetching name and school from new_users_collection
+    user_doc = new_users_collection.find_one({"userId": user_id})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail=f"User with userId {user_id} not found in new_users_collection")
+
+    # Extract fullName and school from the new_users_collection
+    user_name = user_doc.get("fullName", "Unknown")
+    school = user_doc.get("school", " ")
 
     new_levels = data.levels.model_dump()
 
@@ -194,7 +200,16 @@ async def save_createGoal(
     else:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-
+@router.get("/class-tenth")
+async def get_class_tenth():
+    try:
+        syllabus_data = class_tenth_collection.find_one({}, {"_id": 0})
+        if syllabus_data:
+            return syllabus_data
+        else:
+            raise HTTPException(status_code=404, detail="Class tenth syllabus data not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching class tenth syllabus: {str(e)}")
 
 @router.get("/get-goals")
 async def get_user_goals(user=Depends(get_current_user)):
