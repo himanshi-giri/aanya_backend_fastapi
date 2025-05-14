@@ -16,16 +16,15 @@ load_dotenv()
 
 
 
-from database.db import users_collection , models, new_users_collection, leaderboard_collection
+from database.db import users_collection , models, new_users_collection, leaderboard_collection , uploads_collection, solutions_collection, conversation_collection
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
-
-from routes.v2 import API_routes,play_with_friend,leaderboard   # v2 route
 
 
   # v1 routes/
 
-from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver,Auth_routes ,subjects,User_route # v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route # v2 route
+
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
 
@@ -51,6 +50,7 @@ app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
 app.include_router(Doubt_solver.router)
+app.include_router(EvaluateAnswers.router)
 
 app.include_router(auth_routes.router)
 #Sapp.include_router(leaderboard_route.router)

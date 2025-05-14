@@ -27,7 +27,7 @@ Doubt_solver = None
 uploads_collection = None
 solutions_collection = None
 conversation_collection = None
-fs_bucket = None
+fs= None
 challenges_collection=None
 
 def init_db():
@@ -35,7 +35,7 @@ def init_db():
 
     global client, db, users_collection, role_menu_collection, models
     global new_users_collection, leaderboard_collection, assessment_collection,challenges_collection
-    global Doubt_solver, uploads_collection, solutions_collection, conversation_collection, fs_bucket,create_goal,class_tenth_collection
+    global Doubt_solver, uploads_collection, solutions_collection, conversation_collection,create_goal,class_tenth_collection
     global annya_db, new_annya_db
 
     MONGO_URI = os.getenv("MONGO_URI")
@@ -60,7 +60,7 @@ def init_db():
     conversation_collection = new_annya_db["conversation"]
     challenges_collection = new_annya_db["challenges"]
 
-    fs_bucket = GridFS(db)  # ✅ Sync version of GridFS
+    db.fs = GridFS(new_annya_db)
 
    
     create_goal = new_annya_db["create_goal"]
