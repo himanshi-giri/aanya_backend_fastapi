@@ -211,11 +211,10 @@ def extract_text_from_image_bytes(image_bytes):
         return f"Error extracting text from image: {str(e)}"
 
 def format_evaluation_prompt(question, student_answer, subject, grade, total_marks):
-    """Create a detailed prompt for Gemini to evaluate mathematics problems with thorough, teacher-like feedback."""
+    """Create a detailed prompt for Gemini to evaluate student solutions with thorough, teacher-like feedback."""
     
-    # Enhanced prompt specifically for mathematics evaluation with detailed structure
     prompt = f"""
-You are an expert mathematics teacher evaluating a student's answer to a math problem. Your goal is to provide detailed, educational feedback that helps the student learn from their work. The student is in grade {grade} and studying {subject}.
+You are an expert educational evaluator for K-12 students. Your role is to carefully analyze solutions and provide constructive, detailed feedback that helps students learn and improve.
 
 QUESTION:
 {question}
@@ -224,96 +223,99 @@ STUDENT'S ANSWER:
 {student_answer}
 
 TOTAL MARKS: {total_marks}
+SUBJECT: {subject}
+GRADE LEVEL: {grade}
 
-Please provide a highly detailed evaluation with the following structure:
+When evaluating this solution:
 
-1. PROBLEM UNDERSTANDING:
-   - Restate what the problem asks for in clear terms
-   - List the given quantities and what needs to be found
-   - Identify the mathematical concepts involved
+1. Begin with a short summary acknowledging the student's strengths - what concepts they understood correctly and applied well.
 
-2. DETAILED EVALUATION OF SOLUTION:
-   - Step-by-step analysis of the student's approach
-   - For each step:
-     * Explain what they did correctly
-     * Point out any conceptual errors
-     * Identify calculation errors
-     * Show correct working for any errors
-   - Comment on the student's logical flow
-   - Evaluate the mathematical soundness of their approach
+2. Perform a detailed step-by-step analysis of the solution:
+   - Identify each logical step in the student's work
+   - For each step, analyze its mathematical/scientific correctness 
+   - Point out where precise reasoning was demonstrated
+   - Identify any conceptual errors or procedural mistakes
 
-3. SPECIFIC SCORING BREAKDOWN:
-   - AB + BC + CA = 4 + 3.5 + 2.5 = 10 cm  (Show specific calculations like this)
-   - Provide point-by-point allocation with specific values (like +1 for correctly calculating the perimeter)
-   - Note exactly where marks were awarded and deducted
-   - Provide a final score as a fraction: X/{total_marks}
+3. For any errors found:
+   - Clearly explain what the specific mistake is
+   - Why it's mathematically/scientifically incorrect 
+   - Show the correct approach with explicit calculations
+   - Connect the correction to fundamental principles
 
-4. COMPLETE CORRECT SOLUTION:
-   - Show the full correct approach
-   - Include all steps that should have been shown
-   - Highlight key steps with explanations
+4. Look for areas of improvement even in correct solutions:
+   - More efficient solution methods
+   - Better organization or presentation
+   - Opportunities for deeper mathematical/scientific insight
+   - Alternative approaches worth considering
 
-5. FEEDBACK FOR IMPROVEMENT:
-   - Specific advice for better problem-solving
-   - Areas where conceptual understanding needs strengthening
-   - Tips for better presentation of mathematical work
+5. Score the solution fairly based on:
+   - Correctness of key steps
+   - Proper application of concepts
+   - Completeness of the solution
+   - Mathematical/scientific reasoning demonstrated
 
-You MUST format your response as a valid JSON object with the following structure exactly:
+6. Provide specific, actionable recommendations that will help the student:
+   - Strengthen conceptual understanding
+   - Improve problem-solving techniques
+   - Develop better solution presentation skills
+   - Gain deeper insights into the subject matter
+
+You MUST format your response as a valid JSON object with the following structure:
 
 {{
   "score": (numerical score as float between 0 and {total_marks}),
-  "feedback": "Brief summary of the evaluation with key strengths and weaknesses",
+  "feedback": "Brief summary of evaluation addressing the student directly with key strengths and areas for improvement",
   "detailed_analysis": {{
-    "problem_statement": "Detailed restatement of the problem with explanation of concepts involved",
-    "approach_evaluation": "Analysis of the student's problem-solving strategy",
+    "problem_understanding": "Analysis of how well the student understood the problem's requirements and constraints",
+    "approach_evaluation": "Assessment of the student's problem-solving strategy and methodology",
     "step_by_step_analysis": [
       {{
         "step_number": 1,
         "step_description": "Description of this step in the solution",
         "student_work": "What the student did in this step",
         "correctness": "Correct/Partially Correct/Incorrect",
-        "explanation": "Detailed explanation of what's right or wrong",
-        "correction": "The correct approach for this step with explicit calculations"
+        "explanation": "Detailed explanation of what's right or wrong, with specific mathematical reasoning",
+        "correction": "The correct approach for this step with explicit calculations if needed"
       }},
       // Additional steps as needed
     ],
-    "scoring": {{
-      "breakdown": [
-        {{
-          "component": "Name of scored component (e.g., 'Identifying similar triangles')",
-          "marks_awarded": X,
-          "marks_possible": Y,
-          "justification": "Explanation of why these marks were awarded/deducted"
-        }},
-        // Additional scoring components
-      ],
-      "total_score": "X/{total_marks}"
-    }},
-    "full_solution": "Complete step-by-step correct solution with all necessary calculations shown explicitly",
+    "conceptual_understanding": "Evaluation of the student's grasp of the underlying principles and concepts",
+    "scoring_breakdown": [
+      {{
+        "component": "Name of scored component (e.g., 'Correct application of the quadratic formula')",
+        "marks_awarded": X,
+        "marks_possible": Y,
+        "justification": "Specific reason for these marks with mathematical details"
+      }},
+      // Additional scoring components
+    ],
+    "correct_solution": "Complete step-by-step solution showing the optimal approach with all calculations",
     "improvement_suggestions": [
-      "Specific suggestion 1",
-      "Specific suggestion 2",
+      "Specific, actionable suggestion 1",
+      "Specific, actionable suggestion 2",
       // Additional suggestions
     ]
   }}
 }}
 
-IMPORTANT INSTRUCTIONS:
-1. Your response MUST be in valid JSON format only
-2. Include specific calculations in your analysis, not just general statements
-3. The "step_by_step_analysis" should break down each mathematical step the student took
-4. Make sure all mathematical terms and concepts are accurately explained
-5. Be specific about where points are awarded and deducted
-6. The score must be between 0 and {total_marks}
-7. Ensure each scoring component has specific point values
-8. Do not use markdown or code blocks in your JSON fields
+IMPORTANT GUIDELINES:
 
-Remember to be precise and educational in your feedback, focusing on helping the student improve their mathematical understanding.
+1. Address the student directly using "you" and "your" rather than referring to "the student"
+2. Maintain an encouraging, supportive tone while being honest about errors
+3. Be specific about mathematical/scientific concepts and calculations in your feedback
+4. Break down complex solutions into clear, logical steps
+5. Ensure your evaluation is appropriate for the student's grade level ({grade})
+6. Focus on conceptual understanding rather than just procedural correctness
+7. Provide detailed reasoning for point deductions and awards
+8. Highlight both strengths and areas for improvement
+9. Include complete mathematical calculations in your corrections
+10. Your JSON response MUST be valid - no markdown, no code blocks, properly escaped characters
+
+Remember that your goal is to help the student learn from this assessment, not just assign a score.
 """
     return prompt
-
 async def evaluate_with_gemini(question, student_answer, subject, grade, total_marks, image_content=None):
-    """Use Gemini API to evaluate the student's answer, with optional image analysis."""
+    """Use Gemini API to evaluate the  answer, with optional image analysis."""
     prompt = format_evaluation_prompt(question, student_answer, subject, grade, total_marks)
     
     # Call Gemini API, passing image content if available
