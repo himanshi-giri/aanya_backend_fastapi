@@ -41,10 +41,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
-<<<<<<< HEAD
-=======
+
 app.include_router(API_routes.router)
->>>>>>> himanshi
+
 app.include_router(user_routes.router)
 app.include_router(file_routes.router)
 
@@ -52,12 +51,11 @@ app.include_router(play_with_friend.router)
 app.include_router(leaderboard.router)
 app.include_router(teach_routes.router) # Himanshi
 app.include_router(Doubt_solver.router)
-<<<<<<< HEAD
+
 app.include_router(auth_routes.router)
-=======
 #Sapp.include_router(leaderboard_route.router)
 #app.include_router(auth_routes.router)
->>>>>>> himanshi
+
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
 app.include_router(User_route.router)

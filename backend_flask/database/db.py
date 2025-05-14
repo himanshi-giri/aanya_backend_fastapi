@@ -32,15 +32,11 @@ challenges_collection=None
 
 def init_db():
     """Initialize MongoDB connection and collections."""
-<<<<<<< HEAD
+
     global client, db, users_collection, role_menu_collection, models
     global new_users_collection, leaderboard_collection, assessment_collection,challenges_collection
     global Doubt_solver, uploads_collection, solutions_collection, conversation_collection, fs_bucket,create_goal,class_tenth_collection
     global annya_db, new_annya_db
-=======
-    global client, db, users_collection, role_menu_collection, models, new_users_collection, leaderboard_collection ,Doubt_solver
-    global  annya_db, new_annya_db, assessment_collection,create_goal,class_tenth_collection
->>>>>>> himanshi
 
     MONGO_URI = os.getenv("MONGO_URI")
     if not MONGO_URI:
@@ -68,11 +64,9 @@ def init_db():
 
    
     create_goal = new_annya_db["create_goal"]
-<<<<<<< HEAD
+
     class_tenth_collection = new_annya_db["class_tenth"]
-=======
-    class_tenth_collection= new_annya_db["class_tenth"]
->>>>>>> himanshi
+
     
     print("✅ MongoDB initialized successfully!")
 
