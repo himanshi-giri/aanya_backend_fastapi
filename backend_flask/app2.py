@@ -24,7 +24,7 @@ from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_r
   # v1 routes/
 
 from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route # v2 route
-
+from routes.v2 import progress
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
 
@@ -59,6 +59,7 @@ app.include_router(auth_routes.router)
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
 app.include_router(User_route.router)
+app.include_router(progress.router)
 
 
 

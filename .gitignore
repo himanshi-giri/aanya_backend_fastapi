@@ -1,6 +1,8 @@
 .env
 conf.json
-
+.git
+.vscode
+myenv
 backend_flask/uploads/*.png
 backend_flask/uploads/*.jpeg
 backend_flask/uploads/*.jpg
