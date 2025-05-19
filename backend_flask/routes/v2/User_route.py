@@ -3,13 +3,15 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from bson import ObjectId
-from database.db import new_users_collection
+from database.db import new_users_collection,challenges_collection
 
 router = APIRouter(prefix="/v2", tags=["User"])
 
 class FriendRequest(BaseModel):
     user_id: str
     friend_username: str
+
+
 
 @router.post("/user/add-friend")
 def add_friend(request: FriendRequest):
@@ -68,3 +70,28 @@ def get_user_friends(user_id: str):
     serialized_friends = [serialize_friend(friend) for friend in friends]
 
     return {"friends": serialized_friends}
+
+from bson.objectid import ObjectId
+
+@router.get("/user/{user_id}/pending-challenges")
+async def get_pending_challenges(user_id: str):
+    try:
+        user =  new_users_collection.find_one({"userId": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        
+        # Query using user's handle if that's stored as 'opponent'
+        pending_challenges_cursor = challenges_collection.find({
+            "opponent": user.get("handle"),
+            "status": "pending"  # Use the actual status used in your DB: "waiting" or "pending"
+        })
+
+        pending_challenges =list(pending_challenges_cursor)
+        print(pending_challenges)
+
+        
+        return {"challenges": pending_challenges}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
