@@ -96,29 +96,44 @@ async def generate_unique_invite_code():
 @router.post("/challenges")
 async def create_challenge(data: ChallengeCreate):
     challenge_id = str(uuid.uuid4())
-    invite_code = await generate_unique_invite_code() if not data.opponentId else None
+    invite_code = generate_unique_invite_code() if not data.opponentId else None
     questions = await generate_questions_from_gemini(data.subject, data.topic, data.level, data.subtopic)
+
+    opponent = new_users_collection.find_one({"_id": ObjectId(data.opponentId)}) if data.opponentId else None
+    #print(opponent)
+    if opponent:
+        print(opponent.get("userId"))
 
     challenge_doc = {
         "_id": challenge_id,
         "creator": data.creatorId,
-        "opponent": data.opponentId,
+        "opponent": opponent.get("userId"),
         "subject": data.subject,
         "topic": data.topic,
-        "level": data.level ,
+        "level": data.level,
         "questions": questions,
         "answers": {},
         "inviteCode": invite_code,
-        "status": "ready" if data.opponentId else "waiting"
+        "status": "waiting"
     }
 
     challenges_collection.insert_one(challenge_doc)
-    new_users_collection.update_one({"userId": data.creatorId}, {"$addToSet": {"challenges": challenge_id}})
+    new_users_collection.update_one(
+        {"userId": data.creatorId},
+        {"$addToSet": {"challenges": challenge_id}}
+    )
 
     if data.opponentId:
-        new_users_collection.update_one({"_id": data.opponentId}, {"$addToSet": {"challenges": challenge_id}})
-    
-    return {"challengeId": challenge_id, "inviteCode": invite_code, "status": challenge_doc["status"]}
+        new_users_collection.update_one(
+            {"_id": data.opponentId},
+            {"$addToSet": {"challenges": challenge_id}}
+        )
+
+    return {
+        "challengeId": challenge_id,
+        "inviteCode": invite_code,
+        "status": challenge_doc["status"]
+    }
 
 @router.post("/challenges/join")
 async def join_challenge(data: JoinChallenge):
@@ -169,30 +184,80 @@ async def submit_answer(challenge_id: str, data: AnswerSubmission):
     challenges_collection.update_one({"_id": challenge_id}, {"$set": {f"answers.{data.userId}": user_answers}})
     return {"message": "Answer recorded."}
 
+# @router.get("/challenges/{challenge_id}/result")
+# async def get_result(challenge_id: str):
+#     challenge = challenges_collection.find_one({"_id": challenge_id})
+#     if not challenge:
+#         raise HTTPException(status_code=404, detail="Challenge not found.")
+
+#     questions = challenge['questions']
+#     scores = {}
+
+#     for user in [challenge.get('creator'), challenge.get('opponent')]:
+#         if user:
+#             answers = challenge['answers'].get(user, {})
+#             score = sum(1 for idx, q in enumerate(questions) if str(answers.get(str(idx))) == str(q['answer']))
+#             scores[user] = score
+
+#     winner = None
+#     if scores.get(challenge.get('creator')) > scores.get(challenge.get('opponent')):
+#         winner = challenge.get('creator')
+#     elif scores.get(challenge.get('creator')) < scores.get(challenge.get('opponent')):
+#         winner = challenge.get('opponent')
+#     else:
+#         winner = "Draw"
+
+#     return {"scores": scores, "winner": winner}
+
 @router.get("/challenges/{challenge_id}/result")
 async def get_result(challenge_id: str):
     challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
+    creator_id = challenge.get('creator')
+    opponent_id = challenge.get('opponent')
     questions = challenge['questions']
+    answers = challenge.get('answers', {})
+
+    # Check if both users have submitted their answers
+    if not (creator_id in answers and opponent_id in answers):
+        return {
+            "status": "waiting",
+            "message": "Opponent hasn't completed the challenge yet."
+        }
+
+    # Helper function to get user handle by user ID
+    def get_handle(user_id):
+        user = new_users_collection.find_one({"userId": user_id})
+        return user.get('handle') if user else user_id  # fallback to userId if no handle
+
+    creator_handle = get_handle(creator_id)
+    opponent_handle = get_handle(opponent_id)
+
+    # Calculate scores
     scores = {}
+    for user_id, handle in [(creator_id, creator_handle), (opponent_id, opponent_handle)]:
+        user_answers = answers.get(user_id, {})
+        score = sum(
+            1 for idx, q in enumerate(questions)
+            if str(user_answers.get(str(idx))) == str(q['answer'])
+        )
+        scores[handle] = score  # Use handle as key here
 
-    for user in [challenge.get('creator'), challenge.get('opponent')]:
-        if user:
-            answers = challenge['answers'].get(user, {})
-            score = sum(1 for idx, q in enumerate(questions) if str(answers.get(str(idx))) == str(q['answer']))
-            scores[user] = score
-
-    winner = None
-    if scores.get(challenge.get('creator')) > scores.get(challenge.get('opponent')):
-        winner = challenge.get('creator')
-    elif scores.get(challenge.get('creator')) < scores.get(challenge.get('opponent')):
-        winner = challenge.get('opponent')
+    # Determine winner by handle
+    if scores[creator_handle] > scores[opponent_handle]:
+        winner = creator_handle
+    elif scores[creator_handle] < scores[opponent_handle]:
+        winner = opponent_handle
     else:
         winner = "Draw"
 
-    return {"scores": scores, "winner": winner}
+    return {
+        "status": "complete",
+        "scores": scores,
+        "winner": winner
+    }
 
 @router.get("/challenges/user/{user_id}")
 async def get_user_challenges(user_id: str):
@@ -224,4 +289,24 @@ async def get_challenge_status(challenge_id: str):
 
     except Exception as e:
         # Log actual error if needed
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/challenges/{challenge_id}/status")
+async def update_challenge_status(challenge_id: str, payload: dict):
+    try:
+        status = payload.get("status")
+        if status not in ["pending", "ready", "in-progress", "completed"]:
+            raise HTTPException(status_code=400, detail="Invalid status")
+
+        result = challenges_collection.update_one(
+            {"_id": challenge_id},
+            {"$set": {"status": status}}
+        )
+        print(result)
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Challenge not found or status unchanged")
+
+        return {"message": "Status updated successfully"}
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

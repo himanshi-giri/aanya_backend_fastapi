@@ -83,8 +83,8 @@ async def get_pending_challenges(user_id: str):
         
         # Query using user's handle if that's stored as 'opponent'
         pending_challenges_cursor = challenges_collection.find({
-            "opponent": user.get("handle"),
-            "status": "pending"  # Use the actual status used in your DB: "waiting" or "pending"
+            "opponent": user_id,
+            "status": "waiting"  # Use the actual status used in your DB: "waiting" or "pending"
         })
 
         pending_challenges =list(pending_challenges_cursor)
@@ -95,3 +95,11 @@ async def get_pending_challenges(user_id: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/user/{user_id}/handle")
+async def get_user_handle(user_id: str):
+    user = new_users_collection.find_one({"_id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    return {"userId": user_id, "handle": user.get("handle", "")}
