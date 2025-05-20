@@ -6,7 +6,7 @@ import os
 import uuid
 import cv2
 import numpy as np
-import easyocr  # Replaced pytesseract with easyocr
+import easyocr
 from PIL import Image
 import re
 import json
@@ -14,7 +14,8 @@ import aiohttp
 import time
 import logging
 from dotenv import load_dotenv
-import base64  # Added for image encoding
+import base64
+import markdown
 
 # Load environment variables from .env file
 load_dotenv()
@@ -27,14 +28,15 @@ logger = logging.getLogger(__name__)
 class TextEvaluationRequest(BaseModel):
     question: str
     totalMarks: int
-    studentAnswer: str  # Added student answer field
-    subject: Optional[str] = "mathematics"  # Default subject is mathematics
-    grade: Optional[int] = 10  # Default grade is 10
+    studentAnswer: str
+    subject: Optional[str] = "mathematics"
+    grade: Optional[int] = 10
 
 class EvaluationResponse(BaseModel):
     feedback: str
     score: float
     detailed_analysis: Optional[Dict] = None
+    formatted_feedback: Optional[str] = None  # New field for beautifully formatted feedback
     
 router = APIRouter()
 
@@ -59,7 +61,7 @@ def get_ocr_reader():
     return reader
 
 # Gemini API Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Get API key from environment variables
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 # Function to call Gemini API
@@ -83,9 +85,9 @@ async def call_gemini_api(prompt, image_content=None, api_key=GEMINI_API_KEY):
             }
         ],
         "generationConfig": {
-            "temperature": 0.2,
+            "temperature": 0.5,
             "topP": 0.95,
-            "topK": 40,
+            "topK": 80,
             "maxOutputTokens": 8192
         }
     }
@@ -98,7 +100,7 @@ async def call_gemini_api(prompt, image_content=None, api_key=GEMINI_API_KEY):
             # Add image as a part in the prompt
             payload["contents"][0]["parts"].insert(0, {
                 "inline_data": {
-                    "mime_type": "image/jpeg",  # Assuming JPEG, adjust if needed
+                    "mime_type": "image/jpeg",
                     "data": base64_image
                 }
             })
@@ -170,7 +172,7 @@ def extract_text_from_image(image_path):
         logger.error(f"OCR error: {e}")
         return f"Error extracting text from image: {str(e)}"
 
-# New function to extract text directly from image bytes
+# Extract text from image bytes
 def extract_text_from_image_bytes(image_bytes):
     """Extract text from image bytes using EasyOCR."""
     try:
@@ -260,42 +262,50 @@ When evaluating this solution:
    - Develop better solution presentation skills
    - Gain deeper insights into the subject matter
 
-You MUST format your response as a valid JSON object with the following structure:
+7. For the formatted_feedback, use this specific visual markdown format:
+   -  **Question Recap**: Restate the question clearly.
+   -  **Step-by-step Analysis**: Use ✅ / ⚠️ / ❌ with detailed breakdown.
+   -  **Total Marks**: Use a markdown table like:
+     | Criteria | Marks |
+     |----------|-------|
+     | Concept Understanding | 1 |
+     | Substitution Accuracy | 2 |
+   - 🟢 **Final Evaluation**: Give overall result (e.g. 🟢 Final Evaluation: Full Marks (6/6))
+   - ✅ **Feedback**: List praises and improvement points if needed.
+
+   
+!!! IMPORTANT !!!
+Your response MUST be a single valid JSON object that matches the following format exactly. Do NOT include plain text or explanations outside the JSON object.
 
 {{
-  "score": (numerical score as float between 0 and {total_marks}),
-  "feedback": "Brief summary of evaluation addressing the student directly with key strengths and areas for improvement",
+  "score": 5,
+  "feedback": "Your summary here.",
   "detailed_analysis": {{
-    "problem_understanding": "Analysis of how well the student understood the problem's requirements and constraints",
-    "approach_evaluation": "Assessment of the student's problem-solving strategy and methodology",
+    "problem_understanding": "...",
+    "approach_evaluation": "...",
     "step_by_step_analysis": [
       {{
         "step_number": 1,
-        "step_description": "Description of this step in the solution",
-        "student_work": "What the student did in this step",
-        "correctness": "Correct/Partially Correct/Incorrect",
-        "explanation": "Detailed explanation of what's right or wrong, with specific mathematical reasoning",
-        "correction": "The correct approach for this step with explicit calculations if needed"
-      }},
-      // Additional steps as needed
+        "step_description": "...",
+        "student_work": "...",
+        "correctness": "Correct / Partially Correct / Incorrect",
+        "explanation": "...",
+        "correction": "..."
+      }}
     ],
-    "conceptual_understanding": "Evaluation of the student's grasp of the underlying principles and concepts",
+    "conceptual_understanding": "...",
     "scoring_breakdown": [
       {{
-        "component": "Name of scored component (e.g., 'Correct application of the quadratic formula')",
-        "marks_awarded": X,
-        "marks_possible": Y,
-        "justification": "Specific reason for these marks with mathematical details"
-      }},
-      // Additional scoring components
+        "component": "...",
+        "marks_awarded": 1,
+        "marks_possible": 1,
+        "justification": "..."
+      }}
     ],
-    "correct_solution": "Complete step-by-step solution showing the optimal approach with all calculations",
-    "improvement_suggestions": [
-      "Specific, actionable suggestion 1",
-      "Specific, actionable suggestion 2",
-      // Additional suggestions
-    ]
-  }}
+    "correct_solution": "...",
+    "improvement_suggestions": ["...", "..."]
+  }},
+  "formatted_feedback": "✅ Question Recap:...\n✅ Step-by-step:...\n📊 Score Table..."
 }}
 
 IMPORTANT GUIDELINES:
@@ -310,12 +320,14 @@ IMPORTANT GUIDELINES:
 8. Highlight both strengths and areas for improvement
 9. Include complete mathematical calculations in your corrections
 10. Your JSON response MUST be valid - no markdown, no code blocks, properly escaped characters
+11. The formatted_feedback field should have a visually appealing format with clear sections, appropriate use of emojis, and markdown formatting
 
 Remember that your goal is to help the student learn from this assessment, not just assign a score.
 """
     return prompt
+
 async def evaluate_with_gemini(question, student_answer, subject, grade, total_marks, image_content=None):
-    """Use Gemini API to evaluate the  answer, with optional image analysis."""
+    """Use Gemini API to evaluate the answer, with optional image analysis."""
     prompt = format_evaluation_prompt(question, student_answer, subject, grade, total_marks)
     
     # Call Gemini API, passing image content if available
@@ -333,7 +345,8 @@ async def evaluate_with_gemini(question, student_answer, subject, grade, total_m
                 "misconceptions": [],
                 "corrections": [],
                 "improvement_tips": ["Please try submitting again later"]
-            }
+            },
+            "formatted_feedback": f"⚠️ **System is experiencing issues.**\n\nWe're unable to provide detailed feedback at the moment. Your answer has been recorded and will be evaluated later.\n\n📊 **Temporary Score**: {round(total_marks * 0.5, 1)}/{total_marks}"
         }
     
     try:
@@ -348,12 +361,17 @@ async def evaluate_with_gemini(question, student_answer, subject, grade, total_m
         
         # Parse the JSON response
         evaluation_data = json.loads(text)
-        
+        logger.info(f"Gemini raw JSON parsed: {json.dumps(evaluation_data, indent=2)}")
+
         # Ensure score is within bounds
         evaluation_data["score"] = max(0, min(float(evaluation_data["score"]), total_marks))
+        evaluation_data["question"] = question
+        # If formatted_feedback is not provided, generate a basic one
+        if ("formatted_feedback" not in evaluation_data or not evaluation_data["formatted_feedback"] or "step_by_step_analysis" not in evaluation_data.get("detailed_analysis", {})):
+           evaluation_data["formatted_feedback"] = generate_formatted_feedback(evaluation_data, total_marks)
+        
         return evaluation_data
 
-    
     except json.JSONDecodeError as e:
         logger.error(f"JSON parsing error from Gemini response: {e}")
         logger.error(f"Raw response: {response['text']}")
@@ -367,6 +385,11 @@ async def evaluate_with_gemini(question, student_answer, subject, grade, total_m
                     extracted_json = json_match.group(0)
                     evaluation_data = json.loads(extracted_json)
                     evaluation_data["score"] = max(0, min(float(evaluation_data["score"]), total_marks))
+                    
+                    # Generate formatted feedback if missing
+                    if "formatted_feedback" not in evaluation_data or not evaluation_data["formatted_feedback"]:
+                        evaluation_data["formatted_feedback"] = generate_formatted_feedback(evaluation_data, total_marks)
+                    
                     return evaluation_data
                 except:
                     pass
@@ -379,8 +402,10 @@ async def evaluate_with_gemini(question, student_answer, subject, grade, total_m
         score = max(0, min(score, total_marks))
         
         # Return a formatted response as fallback
+        basic_feedback = f"⚠️ **Partial evaluation:** We encountered an issue processing the detailed feedback.\n\nBased on your answer, you've earned approximately {score}/{total_marks} marks."
+        
         return {
-            "feedback": f"⚠️ **Partial evaluation:** We encountered an issue processing the detailed feedback.\n\nBased on your answer, you've earned approximately {score}/{total_marks} marks.",
+            "feedback": basic_feedback,
             "score": score,
             "detailed_analysis": {
                 "strengths": ["Analysis incomplete"],
@@ -388,8 +413,93 @@ async def evaluate_with_gemini(question, student_answer, subject, grade, total_m
                 "misconceptions": [],
                 "corrections": [],
                 "improvement_tips": ["Please ensure your answer is clear and complete"]
-            }
+            },
+            "formatted_feedback": basic_feedback
         }
+
+
+def generate_formatted_feedback(evaluation_data, total_marks):
+    """Generate a nicely formatted feedback from evaluation data if missing."""
+    try:
+        score = evaluation_data["score"]
+        feedback = evaluation_data["feedback"]
+        
+        # Start building formatted feedback
+        formatted = f"# ✅ Evaluation Summary\n\n"
+        formatted += f"**Score: {score}/{total_marks}**\n\n"
+        formatted += f"{feedback}\n\n"
+        
+        # Add detailed analysis if available
+        if "detailed_analysis" in evaluation_data:
+            analysis = evaluation_data["detailed_analysis"]
+            
+            # Problem understanding
+            if "problem_understanding" in analysis:
+                formatted += f"## ✅ Problem Understanding\n\n"
+                formatted += f"{analysis['problem_understanding']}\n\n"
+            
+            # Approach evaluation
+            if "approach_evaluation" in analysis:
+                formatted += f"## 🔍 Approach Analysis\n\n"
+                formatted += f"{analysis['approach_evaluation']}\n\n"
+            
+            # Step-by-step analysis
+            if "step_by_step_analysis" in analysis and analysis["step_by_step_analysis"]:
+                formatted += f"## ✅ Step-by-step Analysis\n\n"
+                for step in analysis["step_by_step_analysis"]:
+                    # Emoji based on correctness
+                    emoji = "✅" if step.get("correctness", "").lower() == "correct" else "⚠️" if step.get("correctness", "").lower() == "partially correct" else "❌"
+                    
+                    formatted += f"### {emoji} Step {step.get('step_number', '?')}: {step.get('step_description', 'Analysis')}\n\n"
+                    formatted += f"- **Student Work**: {step.get('student_work', 'N/A')}\n"
+                    formatted += f"- **Evaluation**: {step.get('explanation', 'N/A')}\n"
+                    
+                    if step.get("correction") and step.get("correctness", "").lower() != "correct":
+                        formatted += f"- **Correction**: {step.get('correction', '')}\n"
+                    
+                    formatted += "\n"
+            
+            # Scoring breakdown
+            if "scoring_breakdown" in analysis and analysis["scoring_breakdown"]:
+                formatted += f"## 📊 Score Breakdown\n\n"
+                formatted += "| Component | Marks Awarded | Marks Possible | Justification |\n"
+                formatted += "|-----------|--------------|---------------|---------------|\n"
+                
+                for component in analysis["scoring_breakdown"]:
+                    formatted += f"| {component.get('component', 'N/A')} | {component.get('marks_awarded', 0)} | {component.get('marks_possible', 1)} | {component.get('justification', 'N/A')} |\n"
+                
+                formatted += "\n"
+            
+            # Correct solution
+            if "correct_solution" in analysis and analysis["correct_solution"]:
+                formatted += f"## 📝 Complete Solution\n\n"
+                formatted += f"{analysis['correct_solution']}\n\n"
+            
+            # Improvement suggestions
+            if "improvement_suggestions" in analysis and analysis["improvement_suggestions"]:
+                formatted += f"## 💡 Improvement Suggestions\n\n"
+                for i, suggestion in enumerate(analysis["improvement_suggestions"], 1):
+                    formatted += f"{i}. {suggestion}\n"
+                formatted += "\n"
+            
+            # Final evaluation
+            final_score_percentage = (score / total_marks) * 100
+            if final_score_percentage >= 90:
+                formatted += f"## 🟢 Final Evaluation: **Excellent!** ({score}/{total_marks})\n\n"
+            elif final_score_percentage >= 80:
+                formatted += f"## 🟢 Final Evaluation: **Very Good!** ({score}/{total_marks})\n\n"
+            elif final_score_percentage >= 70:
+                formatted += f"## 🟡 Final Evaluation: **Good** ({score}/{total_marks})\n\n"
+            elif final_score_percentage >= 50:
+                formatted += f"## 🟠 Final Evaluation: **Satisfactory** ({score}/{total_marks})\n\n"
+            else:
+                formatted += f"## 🔴 Final Evaluation: **Needs Improvement** ({score}/{total_marks})\n\n"
+        
+        return formatted
+    
+    except Exception as e:
+        logger.error(f"Error generating formatted feedback: {e}")
+        return f"# Evaluation Result\n\nScore: {evaluation_data.get('score', 0)}/{total_marks}\n\n{evaluation_data.get('feedback', 'No detailed feedback available.')}"
 
 # API endpoints
 @router.post("/evaluate-text")
@@ -411,7 +521,12 @@ async def evaluate_text_endpoint(request: dict = Body(...)):
             logger.warning("Missing student answer in request")
             return JSONResponse(
                 status_code=400,
-                content={"detail": "Student answer is required for evaluation", "feedback": "No answer provided", "score": 0}
+                content={
+                    "detail": "Student answer is required for evaluation", 
+                    "feedback": "No answer provided", 
+                    "score": 0,
+                    "formatted_feedback": "❌ **Missing Answer**\n\nYou didn't provide an answer to evaluate."
+                }
             )
         
         # Log extracted parameters
@@ -425,13 +540,19 @@ async def evaluate_text_endpoint(request: dict = Body(...)):
             grade=grade,
             total_marks=total_marks
         )
+        
         return evaluation
     except Exception as e:
         logger.error(f"Evaluation error: {str(e)}")
         # Return a more helpful error response
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Evaluation error: {str(e)}", "feedback": "System error occurred", "score": 0}
+            content={
+                "detail": f"Evaluation error: {str(e)}", 
+                "feedback": "System error occurred", 
+                "score": 0,
+                "formatted_feedback": "❌ **System Error**\n\nWe encountered a problem while evaluating your answer. Please try again later."
+            }
         )
 
 # Enhanced evaluate with image endpoint
@@ -516,7 +637,8 @@ async def evaluate_with_image(
                 content={
                     "detail": "No student answer provided in text or image",
                     "feedback": "No answer to evaluate was provided.",
-                    "score": 0
+                    "score": 0,
+                    "formatted_feedback": "❌ **Missing Answer**\n\nYou didn't provide an answer (text or image) to evaluate."
                 }
             )
         
@@ -532,6 +654,7 @@ async def evaluate_with_image(
             total_marks=totalMarks,
             image_content=image_for_gemini
         )
+        
         return evaluation
     except Exception as e:
         logger.error(f"Evaluation error: {str(e)}")
@@ -540,7 +663,8 @@ async def evaluate_with_image(
             content={
                 "detail": f"Evaluation error: {str(e)}",
                 "feedback": "An error occurred while processing your submission.",
-                "score": 0
+                "score": 0,
+                "formatted_feedback": "❌ **System Error**\n\nWe encountered a problem while evaluating your answer. Please try again later."
             }
         )
 
@@ -583,9 +707,11 @@ async def evaluate_image_answer(
             content={
                 "detail": f"Image evaluation error: {str(e)}",
                 "feedback": "An error occurred while processing your image submission.",
-                "score": 0
+                "score": 0,
+                "formatted_feedback": "❌ **Image Processing Error**\n\nWe encountered a problem while evaluating your image answer. Please try again later."
             }
         )
+
 
 # Subject-specific evaluation endpoints
 @router.post("/evaluate/subject/{subject}", response_model=EvaluationResponse)
