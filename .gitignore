@@ -1,7 +1,6 @@
 .env
 conf.json
 venv/
-
 backend_flask/uploads/*.png
 backend_flask/uploads/*.jpeg
 backend_flask/uploads/*.jpg
