@@ -6,14 +6,46 @@ import json
 import uuid
 import google.generativeai as genai
 import os
-from database.db import challenges_collection, new_users_collection
+from database.db import challenges_collection, new_users_collection,assessment_collection
 import re
 from fastapi.responses import JSONResponse
 from bson.errors import InvalidId
+from pymongo.collection import Collection
 
 
 router = APIRouter(prefix="/play", tags=["Play With Friend"])
 
+LEVELS = ['beginner', 'developing', 'proficient', 'master', 'advance']
+
+def calculate_challenge_level_from_ids(creator_id: str, opponent_id: str, subject: str, assessment_collection: Collection) -> str:
+    # Helper to fetch user's level for the subject
+    def get_user_level(user_id: str) -> str:
+        record = assessment_collection.find_one({"userId": user_id})
+        print(record,"record/n",)
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Assessment data not found for user {user_id}")
+        levels = record.get("levels", {})
+        subject_level = levels.get(subject, {}).get("level")
+        if subject_level not in LEVELS:
+            raise HTTPException(status_code=400, detail=f"Invalid or missing level for {subject} in user {user_id}")
+        return subject_level
+
+    # Handle guest opponent
+    if opponent_id == 'Null':
+        return get_user_level(creator_id)
+
+    # Fetch levels
+    creator_level = get_user_level(creator_id)
+    opponent_level = get_user_level(opponent_id)
+
+    c_idx = LEVELS.index(creator_level)
+    o_idx = LEVELS.index(opponent_level)
+
+    if c_idx == o_idx:
+        return LEVELS[min(c_idx + 1, len(LEVELS) - 1)]
+
+    avg_idx = (c_idx + o_idx) // 2
+    return LEVELS[avg_idx]
 # Configure Gemini API
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
 if not GOOGLE_API_KEY:
@@ -146,11 +178,6 @@ async def create_challenge(data: ChallengeCreate):
     challenge_id = str(uuid.uuid4())
     invite_code = generate_unique_invite_code() if data.mode == "async" else None
 
-    # Generate questions
-    questions = await generate_questions_from_gemini(
-        data.subject, data.topic, data.level, data.subtopic
-    )
-
     opponent_user_id = None
     if data.opponentId:
         opponent = new_users_collection.find_one({"_id": ObjectId(data.opponentId)})
@@ -158,7 +185,20 @@ async def create_challenge(data: ChallengeCreate):
             opponent_user_id = opponent.get("userId")
         else:
             raise HTTPException(status_code=404, detail="Opponent not found")
+    # print(opponent_user_id)
+    # level = calculate_challenge_level_from_ids(
+    # creator_id=data.creatorId,
+    # opponent_id=opponent_user_id,
+    # subject="Mathematics",
+    # assessment_collection=assessment_collection
+#)
+    #print(level)
+    # Generate questions
+    questions = await generate_questions_from_gemini(
+        data.subject, data.topic, data.level, data.subtopic
+    )
 
+   
     challenge_doc = {
         "_id": challenge_id,
         "creator": data.creatorId,
@@ -253,18 +293,44 @@ async def start_challenge(challenge_id: str):
     return {"questions": challenge['questions']}
 
 
+# @router.post("/challenges/{challenge_id}/answer")
+# async def submit_answer(challenge_id: str, data: AnswerSubmission):
+#     challenge = challenges_collection.find_one({"_id": challenge_id})
+#     if not challenge:
+#         raise HTTPException(status_code=404, detail="Challenge not found.")
+#     if data.userId not in [challenge['creator'], challenge['opponent']]:
+#         raise HTTPException(status_code=403, detail="Not a participant.")
+
+#     user_answers = challenge.setdefault("answers", {}).setdefault(data.userId, {})
+#     user_answers[str(data.questionIndex)] = data.answer
+
+#     challenges_collection.update_one({"_id": challenge_id}, {"$set": {f"answers.{data.userId}": user_answers}})
+#     return {"message": "Answer recorded."}
+
+from fastapi import Request
+
 @router.post("/challenges/{challenge_id}/answer")
-async def submit_answer(challenge_id: str, data: AnswerSubmission):
+async def submit_answer(challenge_id: str, data: AnswerSubmission, request: Request):
     challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
-    if data.userId not in [challenge['creator'], challenge['opponent']]:
+    print(data.userId)
+    # If user is guest (e.g., guest_6B57FA), allow only in async mode
+    is_guest = data.userId.startswith("guest")
+    if is_guest:
+        if challenge.get("mode") != "async":
+            raise HTTPException(status_code=403, detail="Guests can only participate in async challenges.")
+    elif data.userId not in [challenge.get("creator"), challenge.get("opponent")]:
         raise HTTPException(status_code=403, detail="Not a participant.")
 
+    # Store answers
     user_answers = challenge.setdefault("answers", {}).setdefault(data.userId, {})
     user_answers[str(data.questionIndex)] = data.answer
 
-    challenges_collection.update_one({"_id": challenge_id}, {"$set": {f"answers.{data.userId}": user_answers}})
+    challenges_collection.update_one(
+        {"_id": challenge_id},
+        {"$set": {f"answers.{data.userId}": user_answers}}
+    )
     return {"message": "Answer recorded."}
 
 # @router.get("/challenges/{challenge_id}/result")

@@ -76,6 +76,10 @@ from bson.objectid import ObjectId
 @router.get("/user/{user_id}/pending-challenges")
 async def get_pending_challenges(user_id: str):
     try:
+        is_guest = user_id.startswith("guest")
+        if is_guest:
+            return
+
         user =  new_users_collection.find_one({"userId": user_id})
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
