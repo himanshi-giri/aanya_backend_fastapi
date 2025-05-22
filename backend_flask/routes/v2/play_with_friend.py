@@ -8,6 +8,7 @@ import google.generativeai as genai
 import os  # To access environment variables
 from database.db import challenges_collection,new_users_collection
 import re
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/play", tags=["Play With Friend"])
 
@@ -188,7 +189,8 @@ async def create_challenge(data: ChallengeCreate):
         "questions": Questions,
         "answers": {},
         "inviteCode": invite_code,
-        "status": "ready" if data.opponentId else "waiting"
+        "status": "ready" if data.opponentId else "waiting",
+        "timestamp": datetime.now(timezone.utc)
     }
 
     challenges_collection.insert_one(challenge_doc)

@@ -22,7 +22,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Pydantic models
 class TextRequest(BaseModel):
     text: str
-    mode: Optional[str] = "stepbystep"  # Default to "homework" if not specified
+    mode: Optional[str] = "stepbystep"  
     chat_history: Optional[list[str]] = []
 
 class SolutionResponse(BaseModel):

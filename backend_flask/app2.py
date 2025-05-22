@@ -23,8 +23,8 @@ from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_r
 
   # v1 routes/
 
-from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route ,goalpractise # v2 route
-
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route,TeachMeTopic ,goalpractise# v2 route
+from routes.v2 import progress
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
 
@@ -42,6 +42,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 app.include_router(API_routes.router)
+app.include_router(TeachMeTopic.router)
 
 app.include_router(user_routes.router)
 app.include_router(file_routes.router)
@@ -60,6 +61,8 @@ app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
 app.include_router(User_route.router)
 app.include_router(goalpractise.router)
+app.include_router(progress.router)
+
 
 
 origins = [
