@@ -1,14 +1,13 @@
 .env
 conf.json
 venv/
-
 backend_flask/uploads/*.png
 backend_flask/uploads/*.jpeg
 backend_flask/uploads/*.jpg
 backend_flask/uploads/*.bmp
 backend_flask/uploads/
 
-backend_flask/__pycache__/*.pyc
+backend_flask/__pycache__/*.pycn
 backend_flask/__pycache__
 backend_flask/__pycache__/*.pyc
 
