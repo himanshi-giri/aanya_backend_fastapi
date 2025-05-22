@@ -22,7 +22,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Pydantic models
 class TextRequest(BaseModel):
     text: str
-    mode: Optional[str] = "homework"  # Default to "homework" if not specified
+    mode: Optional[str] = "stepbystep"  # Default to "homework" if not specified
     chat_history: Optional[list[str]] = []
 
 class SolutionResponse(BaseModel):
@@ -61,7 +61,7 @@ follow_up_questions = {
 }
 
 # Helper function to generate solution using Gemini API
-async def generate_solution(prompt, file_content=None, file_type=None, subject_hint="general", mode="homework"):
+async def generate_solution(prompt, file_content=None, file_type=None, subject_hint="general", mode="stepbystep"):
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
@@ -174,6 +174,8 @@ async def solve_text(request: TextRequest):
     Process a text query and generate a solution based on the selected mode
     """
     try:
+        if not request.mode or request.mode not in ["stepbystep", "homework"]:
+           request.mode = "stepbystep"
         formatted_history = "\n".join(chat for chat in request.chat_history) if request.chat_history else ""
         prompt = f"""
 You are a helpful and knowledgeable AI tutor. Use the following conversation history to understand the user's context.
@@ -196,7 +198,7 @@ Respond clearly using correct academic notation. Avoid HTML tags.
 @router.post("/upload-file")
 async def upload_file(
     file: UploadFile = File(...),
-    mode: str = Form(default="homework")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
 ):
     try:
         # Read file content
@@ -251,7 +253,7 @@ async def extract_text_from_pdf(file_bytes: bytes) -> str:
 @router.post("/upload-image")
 async def upload_image(
     image: UploadFile = File(...),
-    mode: str = Form(default="homework")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
 ):
     try:
         # Check if the file is actually an image
@@ -289,7 +291,7 @@ async def upload_image(
 @router.post("/send-voice")
 async def send_voice(
     voice: UploadFile = File(...),
-    mode: str = Form(default="homework")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
 ):
     try:
         # Read voice content
@@ -331,7 +333,7 @@ async def send_voice(
 async def solve_image_text(
     image: UploadFile = File(...),
     query: str = Form(default=""),  # Optional query
-    mode: str = Form(default="homework")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
 ):
     try:
         # Debug output
@@ -391,7 +393,7 @@ async def solve_image_text(
 @router.post("/test-query")
 async def test_query(
     query: str = Form(...),
-    mode: str = Form(default="homework")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
 ):
     solution = await generate_solution(query, mode=mode)
     return {"solution": solution}

@@ -23,7 +23,7 @@ from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_r
 
   # v1 routes/
 
-from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route # v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route ,goalpractise # v2 route
 
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
@@ -59,14 +59,14 @@ app.include_router(auth_routes.router)
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
 app.include_router(User_route.router)
-
+app.include_router(goalpractise.router)
 
 
 origins = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5173/",    
     "http://localhost:5173/",
-     "http://localhost:5173",
+    "http://localhost:5173",
     "https://tutor.eduai.live",
     "https://redesigned-space-system-9795qg6rg7xq2pqwr-5173.app.github.dev/",
     "*"
