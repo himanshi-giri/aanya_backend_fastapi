@@ -105,7 +105,7 @@ async def get_leaderboard():
             # Sort users by score and timestamp
             {"$sort": {"score": -1, "timestamp": -1}},
             # Limit to top 5 users
-            {"$limit": 5}
+            {"$limit": 20}
         ]
 
         # Execute the aggregation pipeline
