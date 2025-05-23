@@ -3,7 +3,7 @@ from flask_bcrypt import Bcrypt
 from config import Config
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Initialize MongoDB connection
 client = MongoClient(Config.MONGO_URI)
@@ -47,3 +47,9 @@ class UserProgress(BaseModel):
     completed_tasks: List[CompletedTask]
     pending_tasks: List[TopicProgress]
     weekly_stats: WeeklyStats
+
+
+class loginStreak(BaseModel):
+    userId: str
+    loginDate: datetime  # ISO format datetime for timezone-aware tracking
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
