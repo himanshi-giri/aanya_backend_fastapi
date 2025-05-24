@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from database.db import new_users_collection, assessment_collection
 from helpers.constants import get_default_levels
 from copy import deepcopy
@@ -13,7 +14,7 @@ import aiosmtplib
 from email.message import EmailMessage
 
 from bson import ObjectId
-
+load_dotenv()
 
 router = APIRouter(prefix="/v2/auth", tags=["Auth"])
 
