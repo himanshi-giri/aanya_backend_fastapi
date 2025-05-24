@@ -8,7 +8,7 @@ import base64
 from typing import Optional
 import random
 
-from database.db import db , fs
+from database.db import db
 
 
 router = APIRouter(prefix="/doubt", tags=["Doubt Solver"])

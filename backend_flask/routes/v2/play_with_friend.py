@@ -5,32 +5,63 @@ from bson import ObjectId
 import json
 import uuid
 import google.generativeai as genai
-import os  # To access environment variables
-from database.db import challenges_collection,new_users_collection
+import os
+from database.db import challenges_collection, new_users_collection,assessment_collection
 import re
 from datetime import datetime, timezone
+from fastapi.responses import JSONResponse
+from bson.errors import InvalidId
+from pymongo.collection import Collection
+
 
 router = APIRouter(prefix="/play", tags=["Play With Friend"])
 
-# In-memory data store (simulate database)
-challenges = {}
+LEVELS = ['beginner', 'developing', 'proficient', 'master', 'advance']
 
-# Configure Gemini API (Make sure to set your API key as an environment variable)
+def calculate_challenge_level_from_ids(creator_id: str, opponent_id: str, subject: str, assessment_collection: Collection) -> str:
+    # Helper to fetch user's level for the subject
+    def get_user_level(user_id: str) -> str:
+        record = assessment_collection.find_one({"userId": user_id})
+        print(record,"record/n",)
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Assessment data not found for user {user_id}")
+        levels = record.get("levels", {})
+        subject_level = levels.get(subject, {}).get("level")
+        if subject_level not in LEVELS:
+            raise HTTPException(status_code=400, detail=f"Invalid or missing level for {subject} in user {user_id}")
+        return subject_level
+
+    # Handle guest opponent
+    if opponent_id == 'Null':
+        return get_user_level(creator_id)
+
+    # Fetch levels
+    creator_level = get_user_level(creator_id)
+    opponent_level = get_user_level(opponent_id)
+
+    c_idx = LEVELS.index(creator_level)
+    o_idx = LEVELS.index(opponent_level)
+
+    if c_idx == o_idx:
+        return LEVELS[min(c_idx + 1, len(LEVELS) - 1)]
+
+    avg_idx = (c_idx + o_idx) // 2
+    return LEVELS[avg_idx]
+# Configure Gemini API
 GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY environment variable not set")
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# ------------------ Models ------------------
-
 class ChallengeCreate(BaseModel):
     creatorId: str
     subject: str
     topic: str
     level: str
-    opponentId: Optional[str] = None  # for direct challenge
-    subtopic: Optional[str] = None  # <-- Add this line
+    opponentId: Optional[str] = None
+    subtopic: Optional[str] = None
+    mode: str  # "sync" or "async"
 
 
 class JoinChallenge(BaseModel):
@@ -50,159 +81,154 @@ class Question(BaseModel):
     options: List[str]
     answer: str
 
-# ------------------ Question Generation using Gemini API ------------------
 def generate_sample_questions(subject: str, topic: str, level: str = "medium") -> List[Dict]:
-    """
-    Generates a dummy set of quiz questions based on subject and topic.
-    """
     if subject == "Mathematics" and topic == "Algebra":
         return [
-            {
-                "question": "What is the value of x in the equation 3x + 2 = 8?",
-                "options": ["1", "2", "3", "4"],
-                "answer": "2"
-            },
-            {
-                "question": "Simplify the expression: 5y - 2y + 7y",
-                "options": ["9y", "10y", "12y", "14y"],
-                "answer": "10y"
-            }
+            {"question": "What is the value of x in the equation 3x + 2 = 8?", "options": ["1", "2", "3", "4"], "answer": "2"},
+            {"question": "Simplify the expression: 5y - 2y + 7y", "options": ["9y", "10y", "12y", "14y"], "answer": "10y"}
         ]
     elif subject == "Science" and topic == "Physics":
         return [
-            {
-                "question": "Which law states that energy cannot be created or destroyed?",
-                "options": ["Newton's First Law", "Newton's Second Law", "Law of Conservation of Energy", "Ohm's Law"],
-                "answer": "Law of Conservation of Energy"
-            },
-            {
-                "question": "What is the unit of electric current?",
-                "options": ["Volt", "Ohm", "Ampere", "Watt"],
-                "answer": "Ampere"
-            }
+            {"question": "Which law states that energy cannot be created or destroyed?", "options": ["Newton's First Law", "Newton's Second Law", "Law of Conservation of Energy", "Ohm's Law"], "answer": "Law of Conservation of Energy"},
+            {"question": "What is the unit of electric current?", "options": ["Volt", "Ohm", "Ampere", "Watt"], "answer": "Ampere"}
         ]
     else:
-        return [
-            {"question": f"No dummy questions for {subject} - {topic}"}
-        ]
+        return [{"question": f"No dummy questions for {subject} - {topic}"}]
 
-async def generate_questions_from_gemini(
-    subject: str,
-    topic: str,
-    level: str = "medium",
-    subtopic: Optional[str] = None
-) -> List[Dict]:
-    """
-    Generates quiz questions using the Gemini Pro model.
-    If subtopic is provided, it adds that to the prompt.
-    """
-    # Dynamically build the prompt
+async def generate_questions_from_gemini(subject: str, topic: str, level: str = "medium", subtopic: Optional[str] = None) -> List[Dict]:
     context = f"{subtopic} under {topic}" if subtopic else topic
     prompt = (
-    f"Generate 10 multiple-choice quiz question about {context} in {subject} "
-    f"at a {level} difficulty level. "
-    "Return the result in the following JSON format:\n"
-    "[\n"
-    "  {\n"
-    "    \"question\": \"<Your question here>\",\n"
-    "    \"options\": [\"A\", \"B\", \"C\", \"D\"],\n"
-    "    \"answer\": \"<Correct option text>\"\n"
-    "  }\n"
-    "]\n"
-    "Do not include any explanation or extra text—only valid JSON."
-)
+        f"Generate 10 multiple-choice quiz question about {context} in {subject} at a {level} difficulty level. "
+        "Return the result in the following JSON format:\n"
+        "[\n"
+        "  {\n"
+        "    \"question\": \"<Your question here>\",\n"
+        "    \"options\": [\"A\", \"B\", \"C\", \"D\"],\n"
+        "    \"answer\": \"<Correct option text>\"\n"
+        "  }\n"
+        "]\n"
+        "Do not include any explanation or extra text—only valid JSON."
+    )
 
     try:
-        response = model.generate_content(prompt,generation_config={
-                "temperature": 0.7,
-                "max_output_tokens": 2048,
-            })
+        response = model.generate_content(prompt, generation_config={"temperature": 0.7, "max_output_tokens": 2048})
         response.resolve()
-        #print(response.text)
         if response.text:
             try:
-            # Parse the JSON text
-                raw_text = response.text.strip()
-
-# Remove code block markers like ```j   son and ```
-                cleaned_text = re.sub(r"^```json|```$", "", raw_text).strip()
+                cleaned_text = re.sub(r"^```json|```$", "", response.text.strip()).strip()
                 questions = json.loads(cleaned_text)
                 return questions
             except json.JSONDecodeError:
-                print(f"❌ Failed to parse JSON from Gemini response:\n{response.text}")
                 return [{"question": f"Invalid JSON format for {subject} - {context}"}]
         else:
-            print(f"Gemini API returned an empty response for {subject} - {context}")
             return [{"question": f"Failed to generate question for {subject} - {context}"}]
-
     except Exception as e:
-        print(f"Error calling Gemini API: {e}")
         return [{"question": f"Error generating question for {subject} - {context}"}]
-# ------------------ Routes ------------------
+
+def generate_unique_invite_code():
+    while True:
+        code = uuid.uuid4().hex[:6].upper()
+        if not challenges_collection.find_one({"inviteCode": code}):
+            return code
+
 
 # @router.post("/challenges")
 # async def create_challenge(data: ChallengeCreate):
 #     challenge_id = str(uuid.uuid4())
-#     invite_code = uuid.uuid4().hex[:6].upper() if not data.opponentId else None
+#     invite_code = generate_unique_invite_code() if not data.opponentId else None
+#     questions = await generate_questions_from_gemini(data.subject, data.topic, data.level, data.subtopic)
 
-#     challenge_data = {
+#     opponent = new_users_collection.find_one({"_id": ObjectId(data.opponentId)}) if data.opponentId else None
+#     #print(opponent)
+#     if opponent:
+#         print(opponent.get("userId"))
+
+#     challenge_doc = {
+#         "_id": challenge_id,
 #         "creator": data.creatorId,
-#         "opponent": data.opponentId,
+#         "opponent": opponent.get("userId"),
 #         "subject": data.subject,
 #         "topic": data.topic,
 #         "level": data.level,
-#         "questions": [],
+#         "questions": questions,
 #         "answers": {},
 #         "inviteCode": invite_code,
-#         "status": "ready" if data.opponentId else "waiting"
+#         "status": "waiting"
 #     }
 
-#     challenges[challenge_id] = challenge_data
+#     challenges_collection.insert_one(challenge_doc)
+#     new_users_collection.update_one(
+#         {"userId": data.creatorId},
+#         {"$addToSet": {"challenges": challenge_id}}
+#     )
+
+#     if data.opponentId:
+#         new_users_collection.update_one(
+#             {"_id": data.opponentId},
+#             {"$addToSet": {"challenges": challenge_id}}
+#         )
 
 #     return {
 #         "challengeId": challenge_id,
 #         "inviteCode": invite_code,
-#         "status": challenge_data["status"]
+#         "status": challenge_doc["status"]
 #     }
-
-async def generate_unique_invite_code():
-    while True:
-        code = uuid.uuid4().hex[:6].upper()
-        existing = challenges_collection.find_one({"inviteCode": code})
-        if not existing:
-            return code
 
 @router.post("/challenges")
 async def create_challenge(data: ChallengeCreate):
     challenge_id = str(uuid.uuid4())
-    
-    invite_code =await generate_unique_invite_code() if not data.opponentId else None
-    #print(invite_code)
-    Questions= await generate_questions_from_gemini(data.subject,data.topic,data.level,data.subtopic if data.subtopic else None)
+    invite_code = generate_unique_invite_code() if data.mode == "async" else None
+
+    opponent_user_id = None
+    if data.opponentId:
+        opponent = new_users_collection.find_one({"_id": ObjectId(data.opponentId)})
+        if opponent:
+            opponent_user_id = opponent.get("userId")
+        else:
+            raise HTTPException(status_code=404, detail="Opponent not found")
+    # print(opponent_user_id)
+    # level = calculate_challenge_level_from_ids(
+    # creator_id=data.creatorId,
+    # opponent_id=opponent_user_id,
+    # subject="Mathematics",
+    # assessment_collection=assessment_collection
+#)
+    #print(level)
+    # Generate questions
+    questions = await generate_questions_from_gemini(
+        data.subject, data.topic, data.level, data.subtopic
+    )
+
+   
     challenge_doc = {
         "_id": challenge_id,
         "creator": data.creatorId,
-        "opponent": data.opponentId,
+        "opponent": opponent_user_id,
         "subject": data.subject,
         "topic": data.topic,
         "level": data.level,
-        "questions": Questions,
+        "subtopic": data.subtopic,
+        "questions": questions,
         "answers": {},
         "inviteCode": invite_code,
-        "status": "ready" if data.opponentId else "waiting",
-        "timestamp": datetime.now(timezone.utc)
+        "timestamp": datetime.now(timezone.utc),
+        "mode": data.mode,
+        "status": "waiting"
     }
 
+    # Insert the challenge
     challenges_collection.insert_one(challenge_doc)
-    #print(new_users_collection.find_one({"userId": data.creatorId}))
-    # Optionally, store challenge ID in user profile
+
+    # Add challenge ID to creator
     new_users_collection.update_one(
         {"userId": data.creatorId},
         {"$addToSet": {"challenges": challenge_id}}
     )
+
+    # Add challenge ID to opponent, if any
     if data.opponentId:
         new_users_collection.update_one(
-            {"_id": data.opponentId},
+            {"_id": ObjectId(data.opponentId)},
             {"$addToSet": {"challenges": challenge_id}}
         )
 
@@ -211,16 +237,51 @@ async def create_challenge(data: ChallengeCreate):
         "inviteCode": invite_code,
         "status": challenge_doc["status"]
     }
+
+@router.get("/challenges/{challenge_id}")
+def get_challenge(challenge_id: str):
+    try:
+        challenge = challenges_collection.find_one({"_id": challenge_id})
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid challenge ID format")
+
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+
+    response_data = {
+        "mode": challenge.get("mode"),
+        "inviteCode": challenge.get("inviteCode", ""),
+        "status": challenge.get("status"),
+    }
+
+    return JSONResponse(content=response_data)
+
+
 @router.post("/challenges/join")
 async def join_challenge(data: JoinChallenge):
-    for cid, ch in challenges.items():
-        if ch['inviteCode'] == data.inviteCode:
-            if ch['opponent'] is not None:
-                raise HTTPException(status_code=400, detail="Challenge already has an opponent.")
-            ch['opponent'] = data.userId
-            ch['status'] = "ready"
-            return {"challengeId": cid}
-    raise HTTPException(status_code=404, detail="Invite code not found.")
+    challenge = challenges_collection.find_one({"inviteCode": data.inviteCode})
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Invite code not found.")
+    if challenge['opponent'] is not None:
+        raise HTTPException(status_code=400, detail="Challenge already has an opponent.")
+
+    challenges_collection.update_one({"_id": challenge["_id"]}, {"$set": {"opponent": data.userId, "status": "ready"}})
+    new_users_collection.update_one({"userId": data.userId}, {"$addToSet": {"challenges": challenge['_id']}})
+
+    return {"challengeId": challenge['_id']}
+
+# @router.post("/challenges/{challenge_id}/start")
+# async def start_challenge(challenge_id: str):
+#     challenge = challenges_collection.find_one({"_id": challenge_id})
+#     if not challenge:
+#         raise HTTPException(status_code=404, detail="Challenge not found.")
+#     if not challenge['opponent']:
+#         raise HTTPException(status_code=400, detail="Waiting for opponent to join.")
+
+#     # ✅ Update status to "started"
+#     challenges_collection.update_one({"_id": challenge_id}, {"$set": {"status": "started"}})
+
+#     return {"questions": challenge['questions']}
 
 @router.post("/challenges/{challenge_id}/start")
 async def start_challenge(challenge_id: str):
@@ -228,94 +289,176 @@ async def start_challenge(challenge_id: str):
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
-    if not challenge['opponent']:
-        raise HTTPException(status_code=400, detail="Waiting for opponent to join.")
+    # ✅ Update status to "started" regardless of opponent status
+    challenges_collection.update_one({"_id": challenge_id}, {"$set": {"status": "started"}})
 
-    if challenge['questions']:  # prevent regenerating
-        return {"questions": challenge['questions']}
+    return {"questions": challenge['questions']}
 
-    # Use Gemini API to generate questions
-    questions =  generate_sample_questions(challenge['subject'], challenge['topic'], challenge['level'])
-    challenge['questions'] = questions
-    challenge['status'] = 'in_progress'
-    return {"questions": questions}
+
+# @router.post("/challenges/{challenge_id}/answer")
+# async def submit_answer(challenge_id: str, data: AnswerSubmission):
+#     challenge = challenges_collection.find_one({"_id": challenge_id})
+#     if not challenge:
+#         raise HTTPException(status_code=404, detail="Challenge not found.")
+#     if data.userId not in [challenge['creator'], challenge['opponent']]:
+#         raise HTTPException(status_code=403, detail="Not a participant.")
+
+#     user_answers = challenge.setdefault("answers", {}).setdefault(data.userId, {})
+#     user_answers[str(data.questionIndex)] = data.answer
+
+#     challenges_collection.update_one({"_id": challenge_id}, {"$set": {f"answers.{data.userId}": user_answers}})
+#     return {"message": "Answer recorded."}
+
+from fastapi import Request
 
 @router.post("/challenges/{challenge_id}/answer")
-async def submit_answer(challenge_id: str, data: AnswerSubmission):
-    try:
-        challenge_obj_id = challenge_id
-    except:
-        raise HTTPException(status_code=400, detail="Invalid challenge ID")
-
-    challenge = challenges_collection.find_one({"_id": challenge_obj_id})
+async def submit_answer(challenge_id: str, data: AnswerSubmission, request: Request):
+    challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
-
-    if data.userId not in [challenge['creator'], challenge['opponent']]:
+    print(data.userId)
+    # If user is guest (e.g., guest_6B57FA), allow only in async mode
+    is_guest = data.userId.startswith("guest")
+    if is_guest:
+        if challenge.get("mode") != "async":
+            raise HTTPException(status_code=403, detail="Guests can only participate in async challenges.")
+    elif data.userId not in [challenge.get("creator"), challenge.get("opponent")]:
         raise HTTPException(status_code=403, detail="Not a participant.")
 
+    # Store answers
     user_answers = challenge.setdefault("answers", {}).setdefault(data.userId, {})
-    user_answers[str(data.questionIndex)] = data.answer  # ✅ Fix: stringify key
+    user_answers[str(data.questionIndex)] = data.answer
 
     challenges_collection.update_one(
-        {"_id": challenge_obj_id},
+        {"_id": challenge_id},
         {"$set": {f"answers.{data.userId}": user_answers}}
     )
-
     return {"message": "Answer recorded."}
+
+# @router.get("/challenges/{challenge_id}/result")
+# async def get_result(challenge_id: str):
+#     challenge = challenges_collection.find_one({"_id": challenge_id})
+#     if not challenge:
+#         raise HTTPException(status_code=404, detail="Challenge not found.")
+
+#     questions = challenge['questions']
+#     scores = {}
+
+#     for user in [challenge.get('creator'), challenge.get('opponent')]:
+#         if user:
+#             answers = challenge['answers'].get(user, {})
+#             score = sum(1 for idx, q in enumerate(questions) if str(answers.get(str(idx))) == str(q['answer']))
+#             scores[user] = score
+
+#     winner = None
+#     if scores.get(challenge.get('creator')) > scores.get(challenge.get('opponent')):
+#         winner = challenge.get('creator')
+#     elif scores.get(challenge.get('creator')) < scores.get(challenge.get('opponent')):
+#         winner = challenge.get('opponent')
+#     else:
+#         winner = "Draw"
+
+#     return {"scores": scores, "winner": winner}
 
 @router.get("/challenges/{challenge_id}/result")
 async def get_result(challenge_id: str):
-    try:
-        challenge_obj_id = challenge_id
-    except:
-        raise HTTPException(status_code=400, detail="Invalid challenge ID")
-
-    challenge = challenges_collection.find_one({"_id": challenge_obj_id})
+    challenge = challenges_collection.find_one({"_id": challenge_id})
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found.")
 
+    creator_id = challenge.get('creator')
+    opponent_id = challenge.get('opponent')
     questions = challenge['questions']
+    answers = challenge.get('answers', {})
+
+    # Check if both users have submitted their answers
+    if not (creator_id in answers and opponent_id in answers):
+        return {
+            "status": "waiting",
+            "message": "Opponent hasn't completed the challenge yet."
+        }
+
+    # Helper function to get user handle by user ID
+    def get_handle(user_id):
+        user = new_users_collection.find_one({"userId": user_id})
+        return user.get('handle') if user else user_id  # fallback to userId if no handle
+
+    creator_handle = get_handle(creator_id)
+    opponent_handle = get_handle(opponent_id)
+
+    # Calculate scores
     scores = {}
-    creator = challenge.get('creator')
-    opponent = challenge.get('opponent')
-
-    if creator:
-        answers_creator = challenge['answers'].get(creator, {})
-        print(answers_creator)
-        # score_creator = sum(
-        #     1 for idx, q in enumerate(questions)
-        #     if str(answers_creator.get(str(idx))) == str(q['answer'])
-        # )
-        # scores[creator] = score_creator
-        score_creator = len(answers_creator)
-        scores[creator] = score_creator
-
-    if opponent:
-        answers_opponent = challenge['answers'].get(opponent, {})
-        score_opponent = sum(
+    for user_id, handle in [(creator_id, creator_handle), (opponent_id, opponent_handle)]:
+        user_answers = answers.get(user_id, {})
+        score = sum(
             1 for idx, q in enumerate(questions)
-            if str(answers_opponent.get(str(idx))) == str(q['answer'])
+            if str(user_answers.get(str(idx))) == str(q['answer'])
         )
-        scores[opponent] = score_opponent
+        scores[handle] = score  # Use handle as key here
 
-    winner = None
-    if creator and opponent and scores.get(creator) is not None and scores.get(opponent) is not None:
-        if scores[creator] > scores[opponent]:
-            winner = creator
-        elif scores[opponent] > scores[creator]:
-            winner = opponent
-        else:
-            winner = "Draw"
-    print(scores)
-    return {"scores": scores, "winner": winner}
+    # Determine winner by handle
+    if scores[creator_handle] > scores[opponent_handle]:
+        winner = creator_handle
+    elif scores[creator_handle] < scores[opponent_handle]:
+        winner = opponent_handle
+    else:
+        winner = "Draw"
 
+    return {
+        "status": "complete",
+        "scores": scores,
+        "winner": winner
+    }
 
 @router.get("/challenges/user/{user_id}")
 async def get_user_challenges(user_id: str):
-    user_challenges = [
-        {"id": cid, **ch}
-        for cid, ch in challenges.items()
-        if ch['creator'] == user_id or ch['opponent'] == user_id
+    challenges_cursor = challenges_collection.find({
+        "$or": [
+            {"creator": user_id},
+            {"opponent": user_id}
+        ]
+    })
+    challenges_list = [
+        {"id": str(ch["_id"]), **{k: v for k, v in ch.items() if k != "_id"}} for ch in challenges_cursor
     ]
-    return {"challenges": user_challenges}
+    return {"challenges": challenges_list}
+
+@router.get("/challenges/{challenge_id}/status")
+async def get_challenge_status(challenge_id: str):
+    try:
+        challenge = challenges_collection.find_one({"_id": challenge_id})
+
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+
+        return {
+            "status": challenge.get("status", "waiting"),
+            "creatorId": challenge.get("creator") or challenge.get("creatorId"),
+            "opponentId": challenge.get("opponent") or challenge.get("opponentId"),
+            "mode": challenge.get("mode", "sync")
+        }
+
+    except Exception as e:
+        # Log actual error if needed
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/challenges/{challenge_id}/status")
+async def update_challenge_status(challenge_id: str, payload: dict):
+    try:
+        status = payload.get("status")
+        if status not in ["pending", "ready", "in-progress", "completed"]:
+            raise HTTPException(status_code=400, detail="Invalid status")
+
+        result = challenges_collection.update_one(
+            {"_id": challenge_id},
+            {"$set": {"status": status}}
+        )
+        print(result)
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Challenge not found or status unchanged")
+
+        return {"message": "Status updated successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
