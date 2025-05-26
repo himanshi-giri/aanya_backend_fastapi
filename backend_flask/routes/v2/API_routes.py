@@ -1,3 +1,4 @@
+from operator import ne
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, RootModel
 
@@ -255,3 +256,4 @@ async def get_user_goals(user=Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving goals: {str(e)}")
     
+

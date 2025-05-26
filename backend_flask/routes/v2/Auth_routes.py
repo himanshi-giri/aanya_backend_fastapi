@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from database.db import new_users_collection, assessment_collection
 from helpers.constants import get_default_levels
 from copy import deepcopy
@@ -13,7 +14,7 @@ import aiosmtplib
 from email.message import EmailMessage
 
 from bson import ObjectId
-
+load_dotenv()
 
 router = APIRouter(prefix="/v2/auth", tags=["Auth"])
 
@@ -49,6 +50,7 @@ class UserResponse(BaseModel):  # Added for /verify-otp
     userId: str
     email: EmailStr
     fullName: str
+
 
 # --- Utility Functions ---
 def generate_otp(length: int = 6) -> str:
@@ -143,7 +145,6 @@ async def register_user(request: SignupRequest):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.post("/login")
