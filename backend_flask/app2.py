@@ -17,6 +17,7 @@ load_dotenv()
 
 
 from database.db import users_collection , models, new_users_collection, leaderboard_collection , uploads_collection, solutions_collection, conversation_collection
+#from database.db import users_collection , models, new_users_collection, leaderboard_collection
 
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
