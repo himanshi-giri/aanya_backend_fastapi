@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 # Initialize MongoDB connection
 client = MongoClient(Config.MONGO_URI)
-db = client.get_database("annya")  # Change to your database name
+db = client.get_database("new_Annya")  # Change to your database name
 users_collection = db["users"]
 
 # Initialize Bcrypt for password hashing
