@@ -51,6 +51,7 @@ class UserResponse(BaseModel):  # Added for /verify-otp
     email: EmailStr
     fullName: str
 
+
 # --- Utility Functions ---
 def generate_otp(length: int = 6) -> str:
     """Generates a random numeric OTP of the specified length."""
@@ -144,7 +145,6 @@ async def register_user(request: SignupRequest):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.post("/login")
