@@ -31,6 +31,7 @@ fs= None
 challenges_collection=None
 progress_collection = None
 login_collection = None
+studyTime_collection = None
 
 def init_db():
     """Initialize MongoDB connection and collections."""
@@ -39,7 +40,7 @@ def init_db():
     global new_users_collection, leaderboard_collection, assessment_collection,challenges_collection
     global Doubt_solver, uploads_collection, solutions_collection, conversation_collection,create_goal,class_tenth_collection
     global annya_db, new_annya_db
-    global progress_collection, login_collection
+    global progress_collection, login_collection, studyTime_collection
 
     MONGO_URI = os.getenv("MONGO_URI")
     if not MONGO_URI:
@@ -64,6 +65,7 @@ def init_db():
     challenges_collection = new_annya_db["challenges"]
     progress_collection = new_annya_db["progress"]
     login_collection = new_annya_db["loginStreak"]
+    studyTime_collection = new_annya_db["studyTime"]
 
     db.fs = GridFS(new_annya_db)
 

@@ -1,8 +1,8 @@
 # routes/v2/progress.py
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, Body
 from database.db import progress_collection, challenges_collection, create_goal
-from database.db import leaderboard_collection, login_collection
+from database.db import leaderboard_collection, login_collection, studyTime_collection
 #from models.models import UserProgress
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -276,11 +276,15 @@ async def log_activity(user=Depends(get_current_user)):
 @router.get("/progress2/stats")
 async def get_user_progress(user=Depends(get_current_user)):
     IST_OFFSET = timedelta(hours=5, minutes=30)
-    now = datetime.utcnow() + IST_OFFSET  # Convert UTC to IST
+    now = datetime.now(timezone.utc)  # Convert UTC to IST
 
     # Start and end of the current week (Monday to Sunday)
     start_of_week = now - timedelta(days=now.weekday())
     end_of_week = start_of_week + timedelta(days=6)
+    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # End of week (Sunday 23:59:59 UTC)
+    end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
     # Get login dates in the current week
     logins = login_collection.find({
@@ -306,6 +310,56 @@ async def get_user_progress(user=Depends(get_current_user)):
         "weeklyLoginDays": [d.isoformat() for d in login_days]
     }
     
+    
+class StudyTimeIn(BaseModel):
+    seconds: int
+    
+@router.post("/progress2/study-time")
+async def save_study_time(payload: StudyTimeIn, user=Depends(get_current_user)):
+    now = datetime.now(timezone.utc).date()
+    now_datetime = datetime.combine(now, datetime.min.time(), tzinfo=timezone.utc) 
+    seconds = payload.seconds
+    existing = studyTime_collection.find_one({
+        "userId": user["userId"],
+        "date": now_datetime
+    })
+
+    if existing:
+        studyTime_collection.update_one(
+            {"_id": existing["_id"]},
+            {"$inc": {"seconds": seconds}}
+        )
+    else:
+        studyTime_collection.insert_one({
+            "userId": user["userId"],
+            "date": now_datetime,
+            "seconds": seconds
+        })
+
+    return {"message": "Study time recorded"}
+    
+    
+    
+@router.get("/progress2/total-study-time")
+async def get_study_time(user=Depends(get_current_user)):
+    today = datetime.now(timezone.utc).date()
+    start_of_week = today - timedelta(days=today.weekday())  # Monday
+    
+    start_dt = datetime.combine(start_of_week, datetime.min.time(), tzinfo=timezone.utc)
+
+    logs = studyTime_collection.find({
+        "userId": user["userId"],
+        "date": {"$gte": start_dt}
+    }).to_list(None)
+
+    total_seconds = sum(entry["seconds"] for entry in logs)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+
+    return {
+        "totalTime": f"{hours}hr {minutes}min",
+        "rawSeconds": total_seconds
+    }
     
     
     

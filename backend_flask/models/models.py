@@ -53,3 +53,9 @@ class loginStreak(BaseModel):
     userId: str
     loginDate: datetime  # ISO format datetime for timezone-aware tracking
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    
+    
+class StudyTime(BaseModel):
+    userId: str
+    date: str  # format: YYYY-MM-DD
+    seconds: int
