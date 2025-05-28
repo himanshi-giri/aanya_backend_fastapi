@@ -5,7 +5,7 @@ import fitz
 import google.generativeai as genai
 from datetime import datetime
 import base64
-from typing import Optional
+from typing import Optional,List , Dict
 import random
 import speech_recognition as sr
 import io
@@ -13,7 +13,7 @@ import tempfile
 from pydub import AudioSegment
 import re
 from fastapi.responses import JSONResponse
-
+import json
 from database.db import db , fs
 
 
@@ -25,11 +25,39 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Pydantic models
+# Enhanced Pydantic models
+class ChatMessage(BaseModel):
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: Optional[int] = None
+    hasImage: Optional[bool] = False
+    imageName: Optional[str] = None
+    imageContext: Optional[str] = None
+    hasFile: Optional[bool] = False
+    fileName: Optional[str] = None
+    fileType: Optional[str] = None
+    fileContext: Optional[str] = None
+    hasVoice: Optional[bool] = False
+    voiceContext: Optional[str] = None
+    hasLiveCamera: Optional[bool] = False
+    liveCameraContext: Optional[str] = None
+
+class ConversationSummary(BaseModel):
+    subjects: List[str] = []
+    topics: List[str] = []
+    messageCount: int = 0
+
+class ChatContext(BaseModel):
+    conversationSummary: Optional[ConversationSummary] = None
+    recentHistory: List[ChatMessage] = []
+    totalMessages: int = 0
+
 class TextRequest(BaseModel):
     text: str
     mode: Optional[str] = "stepbystep"  
-    chat_history: Optional[list[str]] = []
+    chat_history: Optional[List[str]] = []  # Deprecated - keeping for backward compatibility
+    chatHistory: Optional[ChatContext] = None  # New structured chat history
+    currentSubject: Optional[str] = "general"
 
 class SolutionResponse(BaseModel):
     solution: str
@@ -65,6 +93,50 @@ follow_up_questions = {
         "Should I give you some practice problems to test your understanding?"
     ]
 }
+# Enhanced helper function to format chat history for context
+def format_chat_history_for_context(chat_context: ChatContext, current_subject: str = "general") -> str:
+    """
+    Format chat history into a contextual string for the AI model
+    """
+    if not chat_context or not chat_context.recentHistory:
+        return ""
+    
+    context_parts = []
+    
+    # Add conversation summary if available
+    if chat_context.conversationSummary and chat_context.conversationSummary.messageCount > 0:
+        summary = chat_context.conversationSummary
+        context_parts.append(f"Previous conversation covered {', '.join(summary.subjects)} topics")
+        if summary.topics:
+            context_parts.append(f"Key topics discussed: {', '.join(summary.topics[:5])}")
+    
+    # Add recent conversation history
+    if chat_context.recentHistory:
+        context_parts.append("Recent conversation:")
+        
+        for msg in chat_context.recentHistory[-10:]:  # Last 10 messages for context
+            role_prefix = "Student:" if msg.role == "user" else "Tutor:"
+            
+            # Add context about multimedia inputs
+            media_context = []
+            if msg.hasImage:
+                media_context.append(f"[with image: {msg.imageName or 'uploaded image'}]")
+            if msg.hasFile:
+                media_context.append(f"[with file: {msg.fileName or 'uploaded document'}]")
+            if msg.hasVoice:
+                media_context.append("[with voice input]")
+            if msg.hasLiveCamera:
+                media_context.append("[with live camera assistance]")
+            
+            media_str = " ".join(media_context)
+            message_text = f"{role_prefix} {msg.content} {media_str}".strip()
+            context_parts.append(message_text)
+    
+    # Add current subject context
+    if current_subject and current_subject != "general":
+        context_parts.append(f"Current focus area: {current_subject}")
+    
+    return "\n".join(context_parts)
 
 # Helper function to convert audio to text using speech recognition
 async def convert_audio_to_text(audio_content: bytes, content_type: str) -> str:
@@ -112,12 +184,30 @@ async def convert_audio_to_text(audio_content: bytes, content_type: str) -> str:
         return "Failed to process audio input"
 
 # Helper function to generate solution using Gemini API
-async def generate_solution(prompt, file_content=None, file_type=None, subject_hint="general", mode="stepbystep"):
+async def generate_solution(prompt, file_content=None, file_type=None, subject_hint="general", mode="stepbystep",chat_context=None, current_subject="general"):
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         # Prepare content parts based on what's available
         content_parts = [prompt]
+         # Add chat history context if available
+        context_string = ""
+        if chat_context:
+            context_string = format_chat_history_for_context(chat_context, current_subject)
+        
+        # Create contextual prompt
+        if context_string:
+            contextual_prompt = f"""CONVERSATION CONTEXT:
+{context_string}
+
+CURRENT QUESTION:
+{prompt}
+
+Please provide a response that takes into account the conversation history and builds upon previous explanations when relevant. If this question relates to something we discussed earlier, reference that context appropriately."""
+        else:
+            contextual_prompt = prompt
+        
+        content_parts.append(contextual_prompt)
         
         # Add file content if available
         if file_content and file_type:
@@ -138,13 +228,19 @@ async def generate_solution(prompt, file_content=None, file_type=None, subject_h
                 else:
                     content_parts.append(f"Document content: {file_content}")
         
-        # Determine the subject based on the prompt content
-        if "math" in prompt.lower() or "calculate" in prompt.lower() or "equation" in prompt.lower() or "integral" in prompt.lower():
+         # Determine the subject based on the prompt content and context
+        if subject_hint != "general":
+            subject = subject_hint
+        elif current_subject != "general":
+            subject = current_subject
+        elif "math" in prompt.lower() or "calculate" in prompt.lower() or "equation" in prompt.lower() or "integral" in prompt.lower():
             subject = "math"
         elif "physics" in prompt.lower() or "force" in prompt.lower() or "motion" in prompt.lower() or "energy" in prompt.lower():
             subject = "physics"
         elif "chemistry" in prompt.lower() or "reaction" in prompt.lower() or "molecule" in prompt.lower() or "compound" in prompt.lower():
             subject = "chemistry"
+        elif "biology" in prompt.lower() or "cell" in prompt.lower() or "organism" in prompt.lower() or "gene" in prompt.lower():
+            subject = "biology"
         else:
             subject = "general"
             
@@ -154,8 +250,8 @@ async def generate_solution(prompt, file_content=None, file_type=None, subject_h
         # Create an enhanced prompt based on the selected mode
         if mode == "stepbystep":
             # Step by Step Doubt Clearing mode
-            enhanced_prompt = f"""{prompt}
-You are a Tutor for K-12 students. You are patient and always eager to help students learn. Students come to you when they get stuck with a problem.
+            enhanced_prompt = f"""{contextual_prompt}
+You are a Tutor from first to tenth class students. You are patient and always eager to help students learn. Students come to you when they get stuck with a problem.
 
 DO NOT reveal the complete solution to any problem. Instead, break the problem into small steps and guide the student through ONLY THE NEXT STEP.
 
@@ -163,8 +259,9 @@ For the current step:
 1. Present ONLY ONE step (the next logical step) and ask the student a leading question.
 2. Give just enough information to help the student figure out this step on their own.
 3. Offer a hint if needed, but don't solve it for them.
+4.Try to help the student understand the concept fastly and clearly, do not extend the conversation unnecessarily.
 
-Your response should be focused only on the immediate next step the student should take.
+Your response should be focused only on the immediate next step the student should take,without using the tags like Step 1, Step 2, etc
 
 Encourage the student to think critically and work through the problems on their own.
 Your role is to facilitate learning, not provide answers.
@@ -172,18 +269,18 @@ Your role is to facilitate learning, not provide answers.
 You possess deep and accurate knowledge of Math, Physics, Chemistry, Biology, and Social Science as taught under CBSE and ICSE boards. 
 You also have expert-level knowledge of the syllabus required for competitive exams like IIT-JEE and NEET.
 
-IMPORTANT: Never reveal the final solution or multiple steps at once.Make sure to provide only a single step at a time.
+IMPORTANT: Never reveal the final solution or multiple steps at once.Make sure to provide only a single step at a time.Avoid writing tags such as Step 1, Step 2, etc. Instead, just present the next step naturally.
 
 End with a question like: "What do you think the next step should be?" or "{follow_up}"
 """
         else:
             # Homework Help mode (complete solution)
-            enhanced_prompt = f"""{prompt}
-You are a Tutor for K-12 students. For Homework Help mode, your goal is to provide a complete, comprehensive solution with all steps clearly explained.
+            enhanced_prompt = f"""{contextual_prompt}
+You are a Tutor from first to tenth class students. For Homework Help mode, your goal is to provide a complete, comprehensive solution with all steps clearly explained.
 
 Please:
 1. Use clear, step-by-step explanations with proper academic notation.
-2. Break down complex processes into logical steps.
+2. Break down complex processes into logical steps,without using tags like Step 1, Step 2, etc. unnecessarily.
 3. Include all necessary formulas, equations, and calculations.
 4. Make sure every part of the solution is thoroughly explained.
 5. Show all work and reasoning.
@@ -207,10 +304,14 @@ End with a natural follow-up question like: "{follow_up}"
         # Store the solution in MongoDB
         solution_doc = {
             "prompt": prompt,
+            "original_prompt": contextual_prompt,
             "solution": response.text,
             "timestamp": datetime.now(),
             "subject": subject,
-            "mode": mode
+            "mode": mode,
+            "has_chat_context": bool(chat_context and chat_context.recentHistory),
+            "context_length": len(chat_context.recentHistory) if chat_context and chat_context.recentHistory else 0,
+            "current_subject": current_subject
         }
         db.solutions_collection.insert_one(solution_doc)
         
@@ -227,33 +328,76 @@ async def solve_text(request: TextRequest):
     try:
         if not request.mode or request.mode not in ["stepbystep", "homework"]:
            request.mode = "stepbystep"
-        formatted_history = "\n".join(chat for chat in request.chat_history) if request.chat_history else ""
+         # Handle both old and new chat history formats
+        chat_context = None
+        if request.chatHistory:
+            chat_context = request.chatHistory
+        elif request.chat_history:
+            # Convert old format to new format for backward compatibility
+            formatted_history = []
+            for i, chat in enumerate(request.chat_history):
+                role = "user" if i % 2 == 0 else "assistant"
+                formatted_history.append(ChatMessage(role=role, content=chat))
+            chat_context = ChatContext(recentHistory=formatted_history)
+        
         prompt = f"""
 You are a helpful and knowledgeable AI tutor. Use the following conversation history to understand the user's context.
-
-Conversation history:
-{formatted_history}
-
-Now answer this question:
-{request.text}
+Question: {request.text}
 
 Respond clearly using correct academic notation. Avoid HTML tags.
 """
         # Pass the mode to generate_solution
-        solution = await generate_solution(prompt, mode=request.mode)
+        solution = await generate_solution(prompt, mode=request.mode, chat_context=chat_context, current_subject=request.currentSubject or "general")
         return SolutionResponse(solution=solution)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+# Helper function to parse chat history from form data
+def parse_chat_history_from_form(chat_history_str: str) -> Optional[ChatContext]:
+    """
+    Parse chat history JSON string from form data
+    """
+    try:
+        if not chat_history_str:
+            return None
+        
+        chat_data = json.loads(chat_history_str)
+        
+        # Handle the nested structure from frontend
+        if isinstance(chat_data, dict):
+            recent_history = []
+            if "recentHistory" in chat_data:
+                for msg in chat_data["recentHistory"]:
+                    recent_history.append(ChatMessage(**msg))
+            
+            conversation_summary = None
+            if "conversationSummary" in chat_data and chat_data["conversationSummary"]:
+                conversation_summary = ConversationSummary(**chat_data["conversationSummary"])
+            
+            return ChatContext(
+                recentHistory=recent_history,
+                conversationSummary=conversation_summary,
+                totalMessages=chat_data.get("totalMessages", len(recent_history))
+            )
+        
+        return None
+    except (json.JSONDecodeError, TypeError, KeyError) as e:
+        print(f"Error parsing chat history: {e}")
+        return None
 
 
 @router.post("/upload-file")
 async def upload_file(
     file: UploadFile = File(...),
-    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep"), # Add mode parameter with default value
+    chatHistory: str = Form(default=""),  # JSON string of chat history
+    currentSubject: str = Form(default="general"),
+    query: str = Form(default="")  # Additional query text
 ):
     try:
         # Read file content
         content = await file.read()
+        # Parse chat history
+        chat_context = parse_chat_history_from_form(chatHistory)
         
         # Store file in MongoDB GridFS 
         file_id = db.fs.put(
@@ -268,6 +412,9 @@ async def upload_file(
             "filename": file.filename,
             "content_type": file.content_type,
             "mode": mode,  # Store the mode in metadata
+            "current_subject": currentSubject,
+            "has_chat_context": bool(chat_context and chat_context.recentHistory),
+            "additional_query": query,
             "timestamp": datetime.now()
         }
         
@@ -283,7 +430,7 @@ async def upload_file(
 
         # Generate solution based on file content and mode
         prompt = f"Please provide a solution for this document:\n{extracted_text}"
-        solution = await generate_solution(prompt, content, file.content_type, mode=mode)
+        solution = await generate_solution(prompt, content, file.content_type, mode=mode, chat_context=chat_context, current_subject=currentSubject)
         
         return {"solution": solution}
     except Exception as e:
@@ -304,7 +451,10 @@ async def extract_text_from_pdf(file_bytes: bytes) -> str:
 @router.post("/upload-image")
 async def upload_image(
     image: UploadFile = File(...),
-    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep"),  # Add mode parameter with default value
+    chatHistory: str = Form(default=""),  # JSON string of chat history
+    currentSubject: str = Form(default="general"),
+    query: str = Form(default="")  # Additional query text
 ):
     try:
         # Check if the file is actually an image
@@ -313,6 +463,8 @@ async def upload_image(
         
         # Read image content
         image_content = await image.read()
+         # Parse chat history
+        chat_context = parse_chat_history_from_form(chatHistory)
         
         # Store image in MongoDB GridFS
         file_id = db.fs.put(
@@ -327,6 +479,9 @@ async def upload_image(
             "filename": image.filename,
             "content_type": image.content_type,
             "mode": mode,  # Store the mode in metadata
+            "current_subject": currentSubject,
+            "has_chat_context": bool(chat_context and chat_context.recentHistory),
+            "additional_query": query,
             "timestamp": datetime.now()
         }
         
@@ -334,7 +489,7 @@ async def upload_image(
         
         # Generate solution based on image and mode
         prompt = "Please analyze the provided image and explain the solution in a clear manner. Start by identifying what is given and what needs to be found. Then outline the method or concept used to solve it. Use correct academic notation and terminology (e.g., x², ∫, Δt, moles, sin(θ), etc.), and avoid unnecessary special characters or HTML tags."
-        solution = await generate_solution(prompt, image_content, image.content_type, "math", mode=mode)
+        solution = await generate_solution(prompt, image_content, image.content_type, "math", mode=mode, chat_context=chat_context, current_subject=currentSubject)
         return {"solution": solution}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -342,11 +497,15 @@ async def upload_image(
 @router.post("/send-voice")
 async def send_voice(
     voice: UploadFile = File(...),
-    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep"),  # Add mode parameter with default value
+    chatHistory: str = Form(default=""),  # JSON string of chat history
+    currentSubject: str = Form(default="general")
 ):
     try:
         # Read voice content
         voice_content = await voice.read()
+        # Parse chat history
+        chat_context = parse_chat_history_from_form(chatHistory)
         
         # Store voice in MongoDB GridFS
         file_id = db.fs.put(
@@ -361,6 +520,8 @@ async def send_voice(
             "filename": voice.filename,
             "content_type": voice.content_type,
             "mode": mode,  # Store the mode in metadata
+            "current_subject": currentSubject,
+            "has_chat_context": bool(chat_context and chat_context.recentHistory),
             "timestamp": datetime.now()
         }
         
@@ -372,7 +533,7 @@ async def send_voice(
         # Generate solution based on transcribed text and mode
         if transcribed_text and transcribed_text not in ["Could not understand the audio clearly", "Audio processing temporarily unavailable", "Failed to process audio input"]:
             prompt = f"The user asked via voice: {transcribed_text}"
-            solution = await generate_solution(prompt, mode=mode)
+            solution = await generate_solution(prompt, mode=mode , chat_context=chat_context, current_subject=currentSubject)
         else:
             solution = f"I received your voice input but had trouble understanding it clearly. {transcribed_text}. Please try speaking clearly or use text input instead."
             
@@ -385,7 +546,10 @@ async def send_voice(
 async def solve_image_text(
     image: UploadFile = File(...),
     query: str = Form(default=""),  # Optional query
-    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep"),  # Add mode parameter with default value
+    chatHistory: str = Form(default=""),  # JSON string of chat history
+    currentSubject: str = Form(default="general")
+
 ):
     try:
         # Debug output
@@ -399,6 +563,8 @@ async def solve_image_text(
 
         # Read image content
         image_content = await image.read()
+         # Parse chat history
+        chat_context = parse_chat_history_from_form(chatHistory)
         
         # Save to MongoDB
         file_id = db.fs.put(
@@ -413,6 +579,9 @@ async def solve_image_text(
             "content_type": image.content_type,
             "query": query,
             "mode": mode,  # Store the mode in metadata
+            "current_subject": currentSubject,
+            "has_chat_context": bool(chat_context and chat_context.recentHistory),
+            "context_length": len(chat_context.recentHistory) if chat_context and chat_context.recentHistory else 0,
             "timestamp": datetime.now()
         })
 
@@ -425,16 +594,18 @@ async def solve_image_text(
         else:
             # This ensures image-only submissions work properly
             prompt = f"{base_prompt} Solve the problem shown in this image."
-
-        # Determine subject from image/query context for better follow-up questions
-        subject_hint = "math"  # Default for mathematical images
+         # Determine subject from image/query context for better follow-up questions
+        subject_hint = currentSubject if currentSubject != "general" else "math"  # Default for mathematical images
         if "chemistry" in query.lower() or "molecule" in query.lower() or "reaction" in query.lower():
             subject_hint = "chemistry"
         elif "physics" in query.lower() or "force" in query.lower() or "motion" in query.lower():
             subject_hint = "physics"
+        elif "biology" in query.lower() or "cell" in query.lower() or "organism" in query.lower():
+            subject_hint = "biology"
+       
 
         # Generate answer from Gemini with image, text, and mode
-        solution = await generate_solution(prompt, image_content, image.content_type, subject_hint, mode=mode)
+        solution = await generate_solution(prompt, image_content, image.content_type, subject_hint, mode=mode, chat_context=chat_context, current_subject=currentSubject)
 
         return {"solution": solution}
     except Exception as e:
@@ -630,7 +801,9 @@ async def solve_live_camera_voice(
     image: UploadFile = File(...),
     query: str = Form(default=""),  # Text query from speech recognition
     audio: Optional[UploadFile] = File(None),  # Optional audio file
-    mode: str = Form(default="stepbystep")  # Mode selection
+    mode: str = Form(default="stepbystep"),  # Mode selection
+    chatHistory: str = Form(default=""),  # JSON string of chat history
+    currentSubject: str = Form(default="general")  # Current subject context
 ):
     """
     Enhanced endpoint for live camera assistance with voice input
@@ -639,14 +812,15 @@ async def solve_live_camera_voice(
     try:
         print(f"Live assistance request - Image: {image.filename}, Query: {query}, Mode: {mode}")
         print(f"Audio file present: {audio.filename if audio else 'None'}")
-        
+        print(f"Current subject: {currentSubject}")
         # Validate image
         if not image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="File must be an image")
 
         # Read image content
         image_content = await image.read()
-        
+         # Parse chat history
+        chat_context = parse_chat_history_from_form(chatHistory)
         # Store image in MongoDB GridFS
         image_file_id = db.fs.put(
             image_content,
@@ -699,6 +873,9 @@ async def solve_live_camera_voice(
             "transcribed_audio": transcribed_audio_text,
             "combined_query": combined_query,
             "mode": mode,
+            "current_subject": currentSubject,
+            "has_chat_context": bool(chat_context and chat_context.recentHistory),
+            "context_length": len(chat_context.recentHistory) if chat_context and chat_context.recentHistory else 0,
             "session_type": "live_camera_voice",
             "timestamp": datetime.now()
         }
@@ -709,15 +886,24 @@ async def solve_live_camera_voice(
         base_prompt = """You are providing LIVE TUTORING assistance. The student is pointing their camera at a problem and speaking to you in real-time. 
 
 Analyze the image carefully and respond to their voice input naturally, as if you're sitting right next to them helping with their homework.
+You are a Tutor for K-12 students. You are patient and always eager to help students learn. Students come to you when they get stuck with a problem.
 
-Key guidelines:
-1. Be conversational and encouraging
-2. Reference what you see in the image specifically
-3. Address their spoken question directly
-4. Provide clear, step-by-step guidance appropriate to their learning level
-5. Use proper academic notation when needed, but keep mathematical expressions SPEECH-FRIENDLY
-6. Be patient and supportive like a good tutor would be
+DO NOT reveal the complete solution to any problem. Instead, break the problem into small steps and guide the student through ONLY THE NEXT STEP.
 
+For the current step:
+1. Present ONLY ONE step (the next logical step) and ask the student a leading question.
+2. Give just enough information to help the student figure out this step on their own.
+3. Offer a hint if needed, but don't solve it for them.
+
+Your response should be focused only on the immediate next step the student should take.
+
+Encourage the student to think critically and work through the problems on their own.
+Your role is to facilitate learning, not provide answers.
+
+You possess deep and accurate knowledge of Math, Physics, Chemistry, Biology, and Social Science as taught under CBSE and ICSE boards. 
+You also have expert-level knowledge of the syllabus required for competitive exams like IIT-JEE and NEET.
+
+IMPORTANT: Never reveal the final solution or multiple steps at once.Make sure to provide only a single step at a time.
 IMPORTANT FORMATTING RULES FOR MATHEMATICAL EXPRESSIONS:
 - Use Unicode mathematical symbols when appropriate: θ, π, α, β, √, ∫, ∑, ≤, ≥, ≠, ≈, ±, ×, ÷
 - For powers: prefer x² over x^2 for common squares, but x^2 is acceptable
@@ -758,7 +944,7 @@ The student is showing you this image. They may have spoken but the audio wasn't
             subject_hint = "biology"
 
         # Generate solution using Gemini with enhanced context
-        raw_solution = await generate_solution(prompt, image_content, image.content_type, subject_hint, mode)
+        raw_solution = await generate_solution(prompt, image_content, image.content_type, subject_hint, mode,chat_context=chat_context, current_subject=currentSubject)
         
         # Create dual response versions
         solution_versions = create_dual_response(raw_solution, mode)
@@ -776,7 +962,9 @@ The student is showing you this image. They may have spoken but the audio wasn't
             "speech_solution": speech_solution,    # For text-to-speech
             "transcribed_query": combined_query,
             "audio_transcription": transcribed_audio_text,
-            "session_id": str(session_metadata.get("_id", "unknown"))
+            "session_id": str(session_metadata.get("_id", "unknown")),
+            "chat_context_applied": bool(chat_context and chat_context.recentHistory),
+            "context_length": len(chat_context.recentHistory) if chat_context and chat_context.recentHistory else 0
         }
         
     except Exception as e:
@@ -787,7 +975,29 @@ The student is showing you this image. They may have spoken but the audio wasn't
 @router.post("/test-query")
 async def test_query(
     query: str = Form(...),
-    mode: str = Form(default="stepbystep")  # Add mode parameter with default value
+    mode: str = Form(default="stepbystep"),  # Add mode parameter with default value
+    chatHistory: str = Form(default=""),  # JSON string of chat history
+    currentSubject: str = Form(default="general")  # Current subject context
 ):
-    solution = await generate_solution(query, mode=mode)
-    return {"solution": solution}
+    """
+    Test endpoint with chat history support
+    """
+    try:
+        # Parse chat history
+        chat_context = parse_chat_history_from_form(chatHistory)
+        
+        solution = await generate_solution(
+            query, 
+            mode=mode, 
+            chat_context=chat_context, 
+            current_subject=currentSubject
+        )
+        
+        return {
+            "solution": solution,
+            "chat_context_applied": bool(chat_context and chat_context.recentHistory),
+            "context_length": len(chat_context.recentHistory) if chat_context and chat_context.recentHistory else 0
+        }
+    except Exception as e:
+        print(f"Error in test query: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Test query failed: {str(e)}")
