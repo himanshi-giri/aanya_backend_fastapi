@@ -107,3 +107,11 @@ async def get_user_handle(user_id: str):
         raise HTTPException(status_code=404, detail="User not found.")
 
     return {"userId": user_id, "handle": user.get("handle", "")}
+
+@router.get("/user/{user_id}/handleByUserId")
+async def get_user_handle_by_user_id(user_id: str):
+    user = new_users_collection.find_one({"userId": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    return {"userId": user_id, "handle": user.get("handle", "")}
