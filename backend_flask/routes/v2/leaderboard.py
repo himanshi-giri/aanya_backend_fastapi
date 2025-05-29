@@ -43,12 +43,31 @@ async def get_leaderboard():
         pipeline = [
             # Unwind the improvements array to create a document for each improvement
             {"$unwind": "$improvements"},
-            # Project the fields we need, including a calculated score
+            # Lookup to join with new_users collection to get profilePhoto
+            {
+                "$lookup": {
+                    "from": "users",  # Confirmed collection name
+                    "localField": "userId",
+                    "foreignField": "userId",
+                    "as": "user_data"
+                }
+            },
+            # Unwind user_data with preserveNullAndEmptyArrays to handle missing matches
+            {
+                "$unwind": {
+                    "path": "$user_data",
+                    "preserveNullAndEmptyArrays": True
+                }
+            },
+            # Project the fields we need, including profilePhoto with fallback
             {
                 "$project": {
                     "userId": 1,
                     "name": 1,
                     "school": 1,
+                    "profilePhoto": {
+                        "$ifNull": ["$user_data.profilePhoto", None]
+                    },
                     "subject": "$improvements.subject",
                     "topic": "$improvements.topic",
                     "subtopic": "$improvements.subtopic",
@@ -93,6 +112,7 @@ async def get_leaderboard():
                     "userId": {"$first": "$userId"},
                     "name": {"$first": "$name"},
                     "school": {"$first": "$school"},
+                    "profilePhoto": {"$first": "$profilePhoto"},
                     "subject": {"$first": "$subject"},
                     "topic": {"$first": "$topic"},
                     "subtopic": {"$first": "$subtopic"},
@@ -104,18 +124,22 @@ async def get_leaderboard():
             },
             # Sort users by score and timestamp
             {"$sort": {"score": -1, "timestamp": -1}},
-            # Limit to top 5 users
-            {"$limit": 5}
+            # Limit to top 20 users
+            {"$limit": 20}
         ]
 
         # Execute the aggregation pipeline
         logs_cursor = leaderboard_collection.aggregate(pipeline)
         logs = []
         for log in logs_cursor:
+            # Debug: Log if profilePhoto is missing for specific userId
+            if log.get("userId") == "zyykq3za5a" and not log.get("profilePhoto"):
+                print(f"Debug: No profilePhoto for userId zyykq3za5a, user_data: {log.get('user_data')}")
             logs.append({
                 "userId": log.get("userId"),
                 "name": log.get("name"),
                 "school": log.get("school"),
+                "profilePhoto": log.get("profilePhoto"),
                 "subject": log.get("subject"),
                 "topic": log.get("topic"),
                 "subtopic": log.get("subtopic"),

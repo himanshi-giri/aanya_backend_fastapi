@@ -1,3 +1,4 @@
+from operator import ne
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, RootModel
 
@@ -16,6 +17,7 @@ ALGORITHM = "HS256"
 class LevelInfo(BaseModel):
     level: Optional[str] = None
     subtopics: Optional[Dict[str, "LevelInfo"]] = None
+    lastUpdated: Optional[datetime] = None  # Add lastUpdated field
 
 class SubjectLevels(RootModel[Dict[str, Dict[str, LevelInfo]]]):
     pass
@@ -147,6 +149,15 @@ async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
 
     new_levels = data.levels.model_dump()
 
+   # Add lastUpdated to each topic and subtopic
+    current_time = datetime.utcnow()
+    for subject, topics in new_levels.items():
+        for topic, level_info in topics.items():
+            level_info["lastUpdated"] = current_time
+            if level_info.get("subtopics"):
+                for subtopic, subtopic_info in level_info["subtopics"].items():
+                    subtopic_info["lastUpdated"] = current_time
+
     # Fetch previous data for comparison
     previous_record = assessment_collection.find_one({"userId": user_id})
     previous_levels = previous_record.get("levels", {}) if previous_record else {}
@@ -155,7 +166,10 @@ async def save_self_assessment(data: SelfAssessmentRequest, request: Request):
         # Save new assessment
         assessment_collection.update_one(
             {"userId": user_id},
-            {"$set": {"levels": new_levels}},
+            {"$set": {
+                "levels": new_levels
+                #,"lastUpdated": datetime.utcnow()  # Add timestamp here
+                }},
             upsert=True
         )
 
@@ -174,7 +188,9 @@ async def get_self_assessment(user=Depends(get_current_user)):
         #user_id = "Ishu"
         data = assessment_collection.find_one({"userId": user_id}, {"_id": 0, "levels": 1})
         #print(f"Query result for userId 'Ishu': {data}")
-        return {"levels": data["levels"] if data and "levels" in data else {}}
+        return {"levels": data["levels"] if data and "levels" in data else {}
+                #,"lastUpdated": data.get("lastUpdated", None)
+                }
     except Exception as e:
         print(f"Error in get_self_assessment: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -236,6 +252,8 @@ async def get_user_goals(user=Depends(get_current_user)):
             goal["_id"] = str(goal["_id"])  # Convert ObjectId to string
             goals.append(goal)
         return {"goals": goals}
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving goals: {str(e)}")
     
+

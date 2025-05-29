@@ -2,8 +2,9 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from database.db import new_users_collection, assessment_collection
-from helpers.constants import default_levels
+from helpers.constants import get_default_levels
 from copy import deepcopy
 import jwt as pyjwt
 import random
@@ -13,7 +14,7 @@ import aiosmtplib
 from email.message import EmailMessage
 
 from bson import ObjectId
-
+load_dotenv()
 
 router = APIRouter(prefix="/v2/auth", tags=["Auth"])
 
@@ -49,6 +50,7 @@ class UserResponse(BaseModel):  # Added for /verify-otp
     userId: str
     email: EmailStr
     fullName: str
+
 
 # --- Utility Functions ---
 def generate_otp(length: int = 6) -> str:
@@ -124,12 +126,12 @@ async def register_user(request: SignupRequest):
         new_users_collection.insert_one(new_user)
         
         #creating initial self-assessment entry-every time new user signup all the level is set to beginner
-        try:
-            result = assessment_collection.insert_one({"userId":request.userId,"levels":deepcopy(default_levels)})
-        #print("----------#------------#----------#-----------")
-            print("inseted self-assessment with ID:",result.inserted_id)
-        except Exception as e:
-         print("Self-assessment insert error:",e)
+        # try:
+        #     result = assessment_collection.insert_one({"userId":request.userId,"levels": get_default_levels()})
+        # #print("----------#------------#----------#-----------")
+        #     print("inseted self-assessment with ID:",result.inserted_id)
+        # except Exception as e:
+        #  print("Self-assessment insert error:",e)
 
         await send_verification_email_otp(
             request.email, otp
@@ -143,7 +145,6 @@ async def register_user(request: SignupRequest):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.post("/login")

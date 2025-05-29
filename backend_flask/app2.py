@@ -17,13 +17,15 @@ load_dotenv()
 
 
 from database.db import users_collection , models, new_users_collection, leaderboard_collection , uploads_collection, solutions_collection, conversation_collection
+#from database.db import users_collection , models, new_users_collection, leaderboard_collection
+
 
 from routes.v1 import user_routes, auth_routes, file_routes, api_routes, teach_routes  # v1 routes
 
 
   # v1 routes/
 
-from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route,TeachMeTopic# v2 route
+from routes.v2 import API_routes,play_with_friend,leaderboard,Doubt_solver, EvaluateAnswers,Auth_routes ,subjects,User_route,TeachMeTopic ,goalpractise, Profile_routes# v2 route
 from routes.v2 import progress
 
 is_llm_enabled = os.getenv("LLM_ENABLED") == "True"
@@ -60,15 +62,17 @@ app.include_router(auth_routes.router)
 app.include_router(Auth_routes.router)
 app.include_router(subjects.router)
 app.include_router(User_route.router)
+app.include_router(goalpractise.router)
 app.include_router(progress.router)
 
+app.include_router(Profile_routes.router)
 
 
 origins = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5173/",    
     "http://localhost:5173/",
-     "http://localhost:5173",
+    "http://localhost:5173",
     "https://tutor.eduai.live",
     "https://redesigned-space-system-9795qg6rg7xq2pqwr-5173.app.github.dev/",
     "*"
