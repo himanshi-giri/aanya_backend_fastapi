@@ -1,2 +1,2 @@
-/opt/aanya/venv/bin/python3 /opt/AannyaApps/AanyaAPI/backend_flask/app2.py
+/opt/venv/bin/python /opt/aanya-pyhton-api/backend_flask/backend_flask/app2.py 
 

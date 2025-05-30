@@ -98,7 +98,7 @@ def generate_sample_questions(subject: str, topic: str, level: str = "medium") -
 async def generate_questions_from_gemini(subject: str, topic: str, level: str = "medium", subtopic: Optional[str] = None) -> List[Dict]:
     context = f"{subtopic} under {topic}" if subtopic else topic
     prompt = (
-        f"Generate 10 multiple-choice quiz question about {context} in {subject} at a {level} difficulty level. "
+        f"Generate 5 multiple-choice quiz question about {context} in {subject} at a {level} difficulty level. "
         "Return the result in the following JSON format:\n"
         "[\n"
         "  {\n"
