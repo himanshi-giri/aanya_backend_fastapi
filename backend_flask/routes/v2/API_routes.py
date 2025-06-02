@@ -195,7 +195,7 @@ async def get_self_assessment(user=Depends(get_current_user)):
         print(f"Error in get_self_assessment: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/v2/create-goals")
+@router.post("/create-goals")
 async def save_createGoal(
     goal_data: CreateGoalRequest,
     request: Request,
@@ -256,4 +256,3 @@ async def get_user_goals(user=Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving goals: {str(e)}")
     
-
