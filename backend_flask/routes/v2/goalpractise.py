@@ -91,26 +91,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     return user
 
-@router.post("/v2/create-goal")
-async def create_new_goal(goal: Goal, user = Depends(get_current_user)):
-    try:
-        goal_data = goal.dict()
-        goal_data["user_id"] = user["userId"]
-        goal_data["created_at"] = datetime.now()
-        goal_data["completed"] = False
-        goal_data["progress"] = 0
-        goal_data["status"] = "Not started"
-        
-        result = create_goal.insert_one(goal_data)
-        
-        return GoalResponse(
-            success=True, 
-            message="Goal successfully", 
-            goal_id=str(result.inserted_id)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating goal: {str(e)}")
-
 @router.get("/v2/get-goals")
 async def get_goals(user = Depends(get_current_user)):
     try:
@@ -248,11 +228,11 @@ async def complete_goal(
         subject = goal.get("subject")
         
         # Determine goal completed status based on score
-        goal_completed = score >= 50
+        goal_completed = score >= 90
         
         # If no status provided, generate one based on score
         if not status:
-            if score == 100:
+            if score >=90:
                 status = "Successfully achieved"
             elif score >= 50:
                 status = "Partially achieved"
@@ -275,7 +255,7 @@ async def complete_goal(
         )
         
         # If score is good enough, consider leveling up the user in this subject
-        level_up = score >= 70
+        level_up = score >= 90
         if level_up:
             current_level = user.get("subject_levels", {}).get(subject, 1)
             

@@ -137,7 +137,14 @@ def analyze_conversation_context(chat_context: ChatContext):
             detected_subject = detect_subject_from_text(msg.content)
             if detected_subject not in analysis["recent_subjects"]:
                 analysis["recent_subjects"].append(detected_subject)
-        
+             # Extract conversation topics
+            topics = extract_conversation_topics(msg.content)
+            analysis["conversation_topics"].extend(topics)
+            
+            # Detect mood indicators
+            mood = detect_mood_indicators(msg.content)
+            if mood:
+                analysis["student_mood_indicators"].append(mood)
         elif msg.role == "assistant" and msg.hasScore:
             # Track learning progression from scores
             analysis["learning_progression"].append({
@@ -170,10 +177,58 @@ def analyze_conversation_context(chat_context: ChatContext):
             any(msg.hasImage for msg in chat_context.recentHistory),
             any(msg.hasVoice for msg in chat_context.recentHistory),
             any(msg.hasFile for msg in chat_context.recentHistory)
-        ]) >= 2
+        ]) >= 2,
+        "conversation_frequency": len(chat_context.recentHistory),
+        "casual_conversation_ratio": calculate_casual_ratio(chat_context.recentHistory)
     }
     
     return analysis
+def extract_conversation_topics(text):
+    """Extract topics from conversation text."""
+    text_lower = text.lower()
+    topics = []
+    
+    # Academic topics
+    if any(word in text_lower for word in ['homework', 'assignment', 'test', 'exam', 'quiz']):
+        topics.append('academic_work')
+    if any(word in text_lower for word in ['confused', 'don\'t understand', 'help', 'explain']):
+        topics.append('seeking_help')
+    if any(word in text_lower for word in ['good', 'great', 'awesome', 'cool', 'nice']):
+        topics.append('positive_feedback')
+    if any(word in text_lower for word in ['difficult', 'hard', 'challenging', 'struggle']):
+        topics.append('difficulty_expression')
+    
+    return topics
+
+def detect_mood_indicators(text):
+    """Detect student's mood from their message."""
+    text_lower = text.lower()
+    
+    if any(word in text_lower for word in ['excited', 'happy', 'great', 'awesome', 'love']):
+        return 'positive'
+    elif any(word in text_lower for word in ['confused', 'frustrated', 'difficult', 'hard', 'hate']):
+        return 'struggling'
+    elif any(word in text_lower for word in ['tired', 'boring', 'whatever', 'ok', 'fine']):
+        return 'neutral'
+    elif any(word in text_lower for word in ['curious', 'interesting', 'why', 'how', 'wonder']):
+        return 'curious'
+    
+    return 'neutral'
+
+def calculate_casual_ratio(recent_history):
+    """Calculate the ratio of casual vs academic conversations."""
+    if not recent_history:
+        return 0
+    
+    casual_count = 0
+    for msg in recent_history:
+        if msg.role == "user" and not msg.hasScore:
+            intent = detect_conversation_intent(msg.content)
+            if intent in ['casual', 'help']:
+                casual_count += 1
+    
+    return casual_count / len([msg for msg in recent_history if msg.role == "user"])
+
 
 def detect_subject_from_text(text):
     """Detect subject from text content."""
@@ -215,7 +270,15 @@ def build_contextual_prompt_enhancement(chat_context: ChatContext, current_subje
             enhancement += "The student has been performing well recently (>80% average). "
         elif avg_recent < 50:
             enhancement += "The student has been struggling recently (<50% average). Provide extra encouragement and clearer explanations. "
+      # Add mood and topic context
+    topics = context_analysis.get("conversation_topics", [])
+    if topics:
+        enhancement += f"Recent conversation themes: {', '.join(set(topics))}. "
     
+    mood_indicators = context_analysis.get("student_mood_indicators", [])
+    if mood_indicators:
+        latest_mood = mood_indicators[-1]
+        enhancement += f"Student's recent mood: {latest_mood}. "
     # Add interaction pattern insights
     patterns = context_analysis.get("interaction_patterns", {})
     if patterns.get("multi_modal_learner"):
@@ -265,7 +328,7 @@ async def call_gemini_api(prompt, image_content=None, api_key=GEMINI_API_KEY):
             }
         ],
         "generationConfig": {
-            "temperature": 0.5,
+            "temperature": 0.7,
             "topP": 0.95,
             "topK": 80,
             "maxOutputTokens": 8192
@@ -691,6 +754,141 @@ def generate_formatted_feedback(evaluation_data, total_marks):
     except Exception as e:
         logger.error(f"Error generating formatted feedback: {e}")
         return f"# Evaluation Result\n\nScore: {evaluation_data.get('score', 0)}/{total_marks}\n\n{evaluation_data.get('feedback', 'No detailed feedback available.')}"
+    
+def detect_conversation_intent(user_message: str) -> str:
+    """
+    Detect if the user message is casual conversation or needs evaluation.
+    Returns: 'casual', 'evaluation', or 'help'
+    """
+    message_lower = user_message.lower().strip()
+    
+    # Casual conversation patterns
+    casual_patterns = [
+        # Greetings
+        r'\b(hi|hello|hey|good morning|good afternoon|good evening)\b',
+        # Thanks/acknowledgments
+        r'\b(thank you|thanks|thanku|thx|okay|ok|alright|got it|understood)\b',
+        # Simple responses
+        r'^(yes|no|sure|fine|cool|nice|great|awesome)\.?!?$',
+        # Goodbye
+        r'\b(bye|goodbye|see you|later|take care)\b',
+        # Just punctuation or very short
+        r'^[.!?]{1,3}$'
+    ]
+    
+    # Check if it's casual conversation
+    for pattern in casual_patterns:
+        if re.search(pattern, message_lower):
+            return 'casual'
+    
+    # Help requests
+    help_patterns = [
+        r'\b(help|how to|what is|explain|don\'t understand|confused)\b',
+        r'\b(can you help|need help|assistance)\b'
+    ]
+    
+    for pattern in help_patterns:
+        if re.search(pattern, message_lower):
+            return 'help'
+    
+    # Check if it looks like a math problem (contains numbers, math symbols, etc.)
+    math_indicators = [
+        r'\d+',  # Contains numbers
+        r'[+\-*/=<>]',  # Math operators
+        r'\b(solve|calculate|find|equation|answer|problem)\b',
+        r'\b(x|y|z)\s*[=+\-*/]',  # Variables with operators
+        len(message_lower) > 20  # Longer messages more likely to be problems
+    ]
+    
+    math_score = sum(1 for pattern in math_indicators if re.search(pattern, user_message))
+    
+    if math_score >= 2:  # At least 2 indicators suggest it's a math problem
+        return 'evaluation'
+    
+    # Default to casual for short, unclear messages
+    return 'casual'
+
+async def generate_casual_response(user_message: str, chat_context: ChatContext = None) -> dict:
+    """Generate a friendly, conversational response for casual messages."""
+    message_lower = user_message.lower().strip()
+    
+    # Contextual responses based on chat history
+    context_info = ""
+    if chat_context and chat_context.recentHistory:
+        recent_evaluations = [msg for msg in chat_context.recentHistory[-5:] if msg.hasScore]
+        if recent_evaluations:
+            context_info = f" I see we've been working on some problems together."
+    
+    # Response patterns
+    if re.search(r'\b(thank you|thanks|thanku|thx)\b', message_lower):
+        responses = [
+            f"You're welcome! 😊{context_info} Feel free to ask if you need help with any math problems.",
+            f"Happy to help!{context_info} What would you like to work on next?",
+            f"No problem at all!{context_info} I'm here whenever you need assistance with your studies."
+        ]
+    elif re.search(r'\b(hi|hello|hey)\b', message_lower):
+        responses = [
+            f"Hello! 👋{context_info} Ready to tackle some math problems together?",
+            f"Hi there!{context_info} What can I help you with today?",
+            f"Hey! 😊{context_info} Let's dive into some learning!"
+        ]
+    elif re.search(r'\b(okay|ok|alright|got it|understood)\b', message_lower):
+        responses = [
+            f"Great!{context_info} Do you have another problem you'd like me to help with?",
+            f"Perfect! 👍{context_info} What's next on your learning agenda?",
+            f"Awesome!{context_info} Ready for the next challenge?"
+        ]
+    elif re.search(r'\b(bye|goodbye|see you|later)\b', message_lower):
+        responses = [
+            f"Goodbye! 👋{context_info} Keep up the great work with your studies!",
+            f"See you later!{context_info} Remember, practice makes perfect! 📚",
+            f"Take care!{context_info} I'll be here when you need help again."
+        ]
+    else:
+        # Generic friendly response
+        responses = [
+            f"I'm here to help you with math problems and learning! 📚{context_info} What would you like to work on?",
+            f"Hey there!{context_info} Share a problem you're working on, and I'll help you solve it step by step! ✨",
+            f"Ready to learn together!{context_info} Feel free to ask me about any math concepts or problems. 🤓"
+        ]
+    
+    import random
+    response_text = random.choice(responses)
+    
+    return {
+        "feedback": response_text,
+        "score": None,  # No scoring for casual conversation
+        "detailed_analysis": None,
+        "formatted_feedback": f"\n\n{response_text}",
+        "conversation_type": "casual"
+    }
+
+async def generate_help_response(user_message: str, chat_context: ChatContext = None) -> dict:
+    """Generate helpful response for help requests."""
+    help_text = """
+🎓 **I'm your AI Math Tutor!** Here's how I can help:
+
+📝 **Submit Problems**: Send me math questions and your solutions
+📸 **Image Support**: Upload photos of handwritten work
+🔍 **Step-by-Step**: I'll analyze each step of your solution
+📊 **Detailed Feedback**: Get scores and improvement suggestions
+💡 **Learning Tips**: Receive personalized study advice
+
+**Example**: 
+- *Question*: "Solve 2x + 5 = 15"
+- *Your Answer*: "x = 5"
+- I'll evaluate your work and provide detailed feedback!
+
+What math problem would you like help with? 🤔
+    """
+    
+    return {
+        "feedback": help_text,
+        "score": None,
+        "detailed_analysis": None,
+        "formatted_feedback": help_text,
+        "conversation_type": "help"
+    }
 
 # API endpoints
 @router.post("/evaluate-text")
@@ -701,6 +899,7 @@ async def evaluate_text_endpoint(request: dict = Body(...)):
         logger.info(f"Received evaluation request: {request}")
         
         # Extract and validate required fields
+        user_message = request.get("studentAnswer", "")
         question = request.get("question", "")
         student_answer = request.get("studentAnswer", "")
         total_marks = request.get("totalMarks", 1)
@@ -730,7 +929,33 @@ async def evaluate_text_endpoint(request: dict = Body(...)):
                     "formatted_feedback": "❌ **Missing Answer**\n\nYou didn't provide an answer to evaluate."
                 }
             )
+        chat_history_data = request.get("chatHistory")
+        chat_context = parse_chat_history(chat_history_data)
+         # Detect conversation intent
+        intent = detect_conversation_intent(user_message)
+        logger.info(f"Detected intent: {intent} for message: '{user_message[:50]}...'")
         
+        # Handle based on intent
+        if intent == 'casual':
+            return await generate_casual_response(user_message, chat_context)
+        elif intent == 'help':
+            return await generate_help_response(user_message, chat_context)
+        elif intent == 'evaluation':
+            # Proceed with existing evaluation logic
+            total_marks = request.get("totalMarks", 1)
+            subject = request.get("subject", "mathematics")
+            grade = request.get("grade", 10)
+            current_subject = request.get("currentSubject", "general")
+            
+            # Check if we have a proper question
+            if not question.strip():
+                return JSONResponse(
+                    content={
+                        "feedback": "I'd love to help! Could you please provide the math question you're working on? 📝",
+                        "score": None,
+                        "formatted_feedback": "❓ **Missing Question**\n\nI'd love to help! Could you please provide the math question you're working on? 📝\n\n**Example Format:**\n- Question: Solve 2x + 5 = 15\n- Your Answer: [your solution]"
+                    }
+                )
         # Log extracted parameters
         logger.info(f"Processing with: question='{question}', answer='{student_answer}', marks={total_marks}")
         
