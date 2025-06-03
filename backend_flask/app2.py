@@ -16,7 +16,7 @@ load_dotenv()
 
 
 
-from database.db import users_collection , models, new_users_collection, leaderboard_collection , uploads_collection, solutions_collection, conversation_collection
+# from database.db import users_collection , models, new_users_collection, leaderboard_collection , uploads_collection, solutions_collection, conversation_collection
 #from database.db import users_collection , models, new_users_collection, leaderboard_collection
 
 
