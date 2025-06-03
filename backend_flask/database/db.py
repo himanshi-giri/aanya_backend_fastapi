@@ -23,6 +23,7 @@ models = None
 leaderboard_collection = None
 new_users_collection = None
 assessment_collection = None
+practice_assessment_collection = None
 Doubt_solver = None
 uploads_collection = None
 solutions_collection = None
@@ -37,7 +38,7 @@ def init_db():
     """Initialize MongoDB connection and collections."""
 
     global client, db, users_collection, role_menu_collection, models
-    global new_users_collection, leaderboard_collection, assessment_collection,challenges_collection
+    global new_users_collection, leaderboard_collection, assessment_collection,practice_assessment_collection,challenges_collection
     global Doubt_solver, uploads_collection, solutions_collection, conversation_collection,create_goal,class_tenth_collection
     global annya_db, new_annya_db
     global progress_collection, login_collection, studyTime_collection
@@ -59,6 +60,7 @@ def init_db():
     new_users_collection = new_annya_db["users"]
     leaderboard_collection = new_annya_db["leaderboard"]
     assessment_collection = new_annya_db["self_assessments"]
+    practice_assessment_collection = new_annya_db["practice_assessments"]
     uploads_collection = new_annya_db["uploads"]
     solutions_collection = new_annya_db["solutions"]
     conversation_collection = new_annya_db["conversation"]
