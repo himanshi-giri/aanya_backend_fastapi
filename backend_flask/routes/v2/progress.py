@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, Body
 from database.db import progress_collection, challenges_collection, create_goal
-from database.db import leaderboard_collection, login_collection, studyTime_collection
+from database.db import leaderboard_collection, login_collection, studyTime_collection, assessment_collection
 #from models.models import UserProgress
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
@@ -401,3 +401,80 @@ async def get_pending_tasks(user=Depends(get_current_user)):
         })
 
     return processed_tasks
+
+
+level_order = ["Beginner", "Developing", "Proficient", "Advanced", "Mastery"]
+
+@router.get("/progress2/strength-areas")
+def get_strength_areas(user=Depends(get_current_user)):
+    user_id = user["userId"]
+
+    # Fetch user's progress document
+    doc = assessment_collection.find_one({"userId": user_id})
+    if not doc or "levels" not in doc:
+        return {"strengthAreas": {}}
+
+    strength_areas = {}
+
+    for subject, topics in doc["levels"].items():
+        for topic, topic_data in topics.items():
+            topic_level = topic_data.get("level", "Beginner")
+
+            if topic_level in level_order and level_order.index(topic_level) >= level_order.index("Proficient"):
+                strength_areas.setdefault(subject, {})
+                strength_areas[subject][topic] = {
+                    "level": topic_level,
+                    "subtopics": {}
+                }
+
+                subtopics_data = topic_data.get("subtopics", {})
+                if subtopics_data:
+                    for subtopic, subtopic_data in subtopics_data.items():
+                        if isinstance(subtopic_data, dict):
+                            sub_level = subtopic_data.get("level", "Beginner")
+                            if sub_level in level_order:
+                                strength_areas[subject][topic]["subtopics"][subtopic] = sub_level
+                            else:
+                                strength_areas[subject][topic]["subtopics"][subtopic] = "Beginner"
+
+    return {"strengthAreas": strength_areas}
+
+
+@router.get("/progress2/growth-areas")
+def get_growth_areas(user=Depends(get_current_user)):
+    user_id = user["userId"]
+
+    # Fetch user's progress document
+    doc = assessment_collection.find_one({"userId": user_id})
+    if not doc or "levels" not in doc:
+        return {"growthAreas": {}}
+
+    growth_areas = {}
+
+    for subject, topics in doc["levels"].items():
+        for topic, topic_data in topics.items():
+            topic_level = topic_data.get("level", "Beginner")
+
+            # Defensive check to avoid ValueError
+            if topic_level not in level_order:
+                topic_level = "Beginner"
+
+            if level_order.index(topic_level) < level_order.index("Proficient"):
+                growth_areas.setdefault(subject, {})
+                growth_areas[subject][topic] = {
+                    "level": topic_level,
+                    "subtopics": {}
+                }
+
+                subtopics_data = topic_data.get("subtopics", {})
+                if subtopics_data:
+                    for subtopic, subtopic_data in subtopics_data.items():
+                        if isinstance(subtopic_data, dict):
+                            sub_level = subtopic_data.get("level", "Beginner")
+                            if sub_level in level_order:
+                                growth_areas[subject][topic]["subtopics"][subtopic] = sub_level
+                            else:
+                                growth_areas[subject][topic]["subtopics"][subtopic] = "Beginner"
+
+    return {"growthAreas": growth_areas}
+

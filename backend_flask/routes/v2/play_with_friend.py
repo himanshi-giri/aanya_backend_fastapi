@@ -62,6 +62,7 @@ class ChallengeCreate(BaseModel):
     opponentId: Optional[str] = None
     subtopic: Optional[str] = None
     mode: str  # "sync" or "async"
+    numberOfQuestions: Optional[int] = 5  # New field with default value
 
 
 class JoinChallenge(BaseModel):
@@ -81,7 +82,7 @@ class Question(BaseModel):
     options: List[str]
     answer: str
 
-def generate_sample_questions(subject: str, topic: str, level: str = "medium") -> List[Dict]:
+def generate_sample_questions(subject: str, topic: str, level: str = "medium",num_questions:int = 5) -> List[Dict]:
     if subject == "Mathematics" and topic == "Algebra":
         return [
             {"question": "What is the value of x in the equation 3x + 2 = 8?", "options": ["1", "2", "3", "4"], "answer": "2"},
@@ -95,10 +96,10 @@ def generate_sample_questions(subject: str, topic: str, level: str = "medium") -
     else:
         return [{"question": f"No dummy questions for {subject} - {topic}"}]
 
-async def generate_questions_from_gemini(subject: str, topic: str, level: str = "medium", subtopic: Optional[str] = None) -> List[Dict]:
+async def generate_questions_from_gemini(subject: str, topic: str, level: str = "medium", subtopic: Optional[str] = None,num_questions: int = 5) -> List[Dict]:
     context = f"{subtopic} under {topic}" if subtopic else topic
     prompt = (
-        f"Generate 10 multiple-choice quiz question about {context} in {subject} at a {level} difficulty level. "
+        f"Generate {num_questions} multiple-choice quiz question about {context} in {subject} at a {level} difficulty level. "
         "Return the result in the following JSON format:\n"
         "[\n"
         "  {\n"
@@ -107,6 +108,7 @@ async def generate_questions_from_gemini(subject: str, topic: str, level: str = 
         "    \"answer\": \"<Correct option text>\"\n"
         "  }\n"
         "]\n"
+        f"Make sure to generate exactly {num_questions} questions. "
         "Do not include any explanation or extra text—only valid JSON."
     )
 
@@ -117,6 +119,11 @@ async def generate_questions_from_gemini(subject: str, topic: str, level: str = 
             try:
                 cleaned_text = re.sub(r"^```json|```$", "", response.text.strip()).strip()
                 questions = json.loads(cleaned_text)
+                 # Validate that we have the correct number of questions
+                if len(questions) != num_questions:
+                    print(f"Warning: Expected {num_questions} questions, got {len(questions)}. Using fallback.")
+                    return generate_sample_questions(subject, topic, level, num_questions)
+                
                 return questions
             except json.JSONDecodeError:
                 return [{"question": f"Invalid JSON format for {subject} - {context}"}]
@@ -178,7 +185,9 @@ def generate_unique_invite_code():
 async def create_challenge(data: ChallengeCreate):
     challenge_id = str(uuid.uuid4())
     invite_code = generate_unique_invite_code() if data.mode == "async" else None
-
+     # Validate numberOfQuestions
+    if data.numberOfQuestions not in [5, 10, 15, 20]:
+        raise HTTPException(status_code=400, detail="Number of questions must be 5, 10, 15, or 20")
     opponent_user_id = None
     if data.opponentId:
         opponent = new_users_collection.find_one({"_id": ObjectId(data.opponentId)})
@@ -196,7 +205,7 @@ async def create_challenge(data: ChallengeCreate):
     #print(level)
     # Generate questions
     questions = await generate_questions_from_gemini(
-        data.subject, data.topic, data.level, data.subtopic
+        data.subject, data.topic, data.level, data.subtopic,data.numberOfQuestions
     )
 
    
@@ -208,6 +217,7 @@ async def create_challenge(data: ChallengeCreate):
         "topic": data.topic,
         "level": data.level,
         "subtopic": data.subtopic,
+        "numberOfQuestions": data.numberOfQuestions,
         "questions": questions,
         "answers": {},
         "inviteCode": invite_code,
@@ -252,6 +262,7 @@ def get_challenge(challenge_id: str):
         "mode": challenge.get("mode"),
         "inviteCode": challenge.get("inviteCode", ""),
         "status": challenge.get("status"),
+        "numberOfQuestions":challenge.get("numberOfQuestions")
     }
 
     return JSONResponse(content=response_data)
